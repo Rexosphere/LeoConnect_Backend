@@ -119,6 +119,34 @@ export class FirestoreClient {
     return this.formatDocument(doc);
   }
 
+  async setDocument(collection: string, id: string, data: any) {
+    // Convert JSON to Firestore format
+    const fields: any = {};
+    for (const key in data) {
+      const value = data[key];
+      if (typeof value === 'string') fields[key] = { stringValue: value };
+      else if (typeof value === 'number') fields[key] = { integerValue: value };
+      else if (typeof value === 'boolean') fields[key] = { booleanValue: value };
+    }
+
+    const token = await this.getAccessToken();
+    // Use PATCH to set document with specific ID
+    const response = await fetch(`${this.baseUrl}/${collection}/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ fields }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to set document ${collection}/${id}: ${response.statusText}`);
+    }
+    const doc = await response.json();
+    return this.formatDocument(doc);
+  }
+
   async query(collection: string, field: string, operator: string, value: any) {
     // Basic structured query implementation
     const query = {

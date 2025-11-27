@@ -63,7 +63,8 @@ router.post('/auth/google', async (request, env) => {
       isWebmaster: false,
       assignedClubId: '', // Placeholder
     };
-    user = await firestore.createDocument('users', newUser); 
+    // Use setDocument to ensure ID matches uid
+    user = await firestore.setDocument('users', uid, newUser); 
   }
 
   // Return UserProfile
@@ -74,7 +75,8 @@ router.post('/auth/google', async (request, env) => {
     photoURL: user.photoURL || picture,
     leoId: user.leoId || '',
     isWebmaster: user.isWebmaster || false,
-    assignedClubId: user.assignedClubId || ''
+    assignedClubId: user.assignedClubId || '',
+    followingClubs: user.followingClubs || []
   };
 });
 
@@ -98,7 +100,7 @@ router.get('/feed', withAuth, async (request, env) => {
       timestamp: p.timestamp || new Date().toISOString()
     }));
     
-    return { posts };
+    return posts;
   } catch (e: any) {
     return error(500, e.message);
   }
@@ -187,7 +189,14 @@ router.post('/posts/:id/like', withAuth, async (request, env) => {
 
 // Public: Get Districts
 router.get('/districts', async (request, env) => {
-  return ['District 306 A1', 'District 306 A2', 'District 306 B1'];
+  const firestore = new FirestoreClient(env);
+  try {
+    const districts = await firestore.getCollection('districts');
+    // Return just the names as strings, assuming document has 'name' field
+    return districts.map((d: any) => d.name).sort();
+  } catch (e: any) {
+    return error(500, e.message);
+  }
 });
 
 // Public: Get Clubs by District
@@ -210,6 +219,69 @@ router.get('/clubs', async (request, env) => {
       description: c.description || '',
       president: c.president || ''
     }));
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Get Current User Profile
+router.get('/users/me', withAuth, async (request, env) => {
+  const firestore = new FirestoreClient(env);
+  const user = request.user;
+  const { uid } = request.query;
+  
+  // Use provided uid or fallback to token sub
+  const targetUid = (uid as string) || user.sub;
+  
+  try {
+    const userDoc = await firestore.getDocument('users', targetUid);
+    if (!userDoc) {
+      return error(404, 'User not found');
+    }
+    
+    return {
+      uid: userDoc.uid,
+      email: userDoc.email,
+      displayName: userDoc.displayName,
+      photoURL: userDoc.photoURL,
+      leoId: userDoc.leoId || '',
+      isWebmaster: userDoc.isWebmaster || false,
+      assignedClubId: userDoc.assignedClubId || '',
+      followingClubs: userDoc.followingClubs || []
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Update User Profile
+router.patch('/users/me', withAuth, async (request, env) => {
+  const firestore = new FirestoreClient(env);
+  const user = request.user;
+  const body = await request.json() as any;
+  
+  try {
+    // Only allow updating specific fields
+    const updates: any = {};
+    if (body.leoId !== undefined) updates.leoId = body.leoId;
+    if (body.assignedClubId !== undefined) updates.assignedClubId = body.assignedClubId;
+    
+    if (Object.keys(updates).length === 0) {
+      return error(400, 'No valid fields to update');
+    }
+
+    const updatedDoc = await firestore.updateDocument('users', user.sub, updates);
+    
+    return {
+      uid: updatedDoc.uid,
+      email: updatedDoc.email,
+      displayName: updatedDoc.displayName,
+      photoURL: updatedDoc.photoURL,
+      leoId: updatedDoc.leoId || '',
+      isWebmaster: updatedDoc.isWebmaster || false,
+      assignedClubId: updatedDoc.assignedClubId || '',
+      followingClubs: updatedDoc.followingClubs || []
+    };
   } catch (e: any) {
     return error(500, e.message);
   }
