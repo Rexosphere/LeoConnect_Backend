@@ -64,7 +64,10 @@ def create_users():
             "photoURL": user["pic"],
             "leoId": user["leoId"],
             "isWebmaster": user["isWebmaster"],
-            "assignedClubId": user["assignedClubId"]
+            "assignedClubId": user["assignedClubId"],
+            "followersCount": random.randint(10, 500),
+            "followingCount": random.randint(10, 500),
+            "postsCount": random.randint(0, 50)
         })
         print(f"Created/Updated user: {user['name']}")
         created_users.append(user)
@@ -167,7 +170,15 @@ def create_clubs():
             "name": club["name"],
             "district": club["district"],
             "description": club["description"],
-            "president": club["president"]
+            "president": club["president"],
+            "membersCount": random.randint(20, 100),
+            "followersCount": random.randint(100, 1000),
+            "email": f"contact@{club['id']}.leoclub.org",
+            "phone": "+94 77 123 4567",
+            "socialLinks": {
+                "facebook": f"https://facebook.com/{club['id']}",
+                "instagram": f"https://instagram.com/{club['id']}"
+            }
         }
         doc_ref.set(club_data)
         print(f"Created/Updated club: {club['name']}")
@@ -235,12 +246,18 @@ def create_posts(users, clubs):
             "authorLogo": author["pic"],
             "clubId": post["clubId"],
             "imageUrl": post["imageUrl"],
+            "images": [post["imageUrl"]] if post["imageUrl"] else [],
             "likesCount": post["likesCount"],
+            "commentsCount": random.randint(0, 20),
+            "sharesCount": random.randint(0, 10),
+            "isPinned": False,
             "timestamp": datetime.now().isoformat()
         }
 
         db.collection("posts").document(post["postId"]).set(post_doc)
         print(f"Created/Updated post: {post['postId']}")
+    
+    return posts_data
 
 def create_districts():
     districts = [
@@ -257,8 +274,46 @@ def create_districts():
         # Use district name as ID for simplicity, or auto-ID
         # Here we use name as ID to ensure uniqueness easily
         doc_ref = db.collection("districts").document(district)
-        doc_ref.set({"name": district})
+        doc_ref.set({
+            "name": district,
+            "totalClubs": random.randint(10, 50),
+            "totalMembers": random.randint(200, 1000)
+        })
         print(f"Created/Updated district: {district}")
+
+def create_comments(users, posts):
+    print("Creating comments...")
+    comments_data = [
+        "Great initiative! 👏",
+        "Count me in for the next one.",
+        "So proud of our club! ❤️",
+        "Amazing work everyone.",
+        "This is what Leoism is all about.",
+        "Can't wait to see the photos!",
+        "Well done team! 💪",
+        "Keep up the good work."
+    ]
+
+    for post in posts: # posts is a list of dicts from create_posts
+        # Add 0-3 comments per post
+        num_comments = random.randint(0, 3)
+        for _ in range(num_comments):
+            comment_id = f"comment-{random.randint(1000, 9999)}"
+            user = random.choice(users)
+            content = random.choice(comments_data)
+            
+            comment_doc = {
+                "postId": post["postId"],
+                "userId": user["uid"],
+                "authorName": user["name"],
+                "authorPhotoUrl": user["pic"],
+                "content": content,
+                "likesCount": random.randint(0, 10),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            db.collection("comments").document(comment_id).set(comment_doc)
+            print(f"Created comment {comment_id} on post {post['postId']}")
 
 def main():
     print("Populating database with data from React App...")
@@ -266,7 +321,9 @@ def main():
         users = create_users()
         create_districts()
         clubs = create_clubs()
-        create_posts(users, clubs)
+        # create_posts now returns the list of created posts for reference
+        posts = create_posts(users, clubs) 
+        create_comments(users, posts)
         print("Database population complete!")
     except Exception as e:
         print(f"Error: {e}")

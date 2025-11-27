@@ -95,8 +95,12 @@ router.get('/feed', withAuth, async (request, env) => {
       authorLogo: p.authorLogo || '',
       content: p.content,
       imageUrl: p.imageUrl || '',
+      images: p.images || (p.imageUrl ? [p.imageUrl] : []),
       likesCount: p.likesCount || 0,
-      isLikedByUser: false, 
+      commentsCount: p.commentsCount || 0,
+      sharesCount: p.sharesCount || 0,
+      isLikedByUser: false,
+      isPinned: p.isPinned || false,
       timestamp: p.timestamp || new Date().toISOString()
     }));
     
@@ -149,8 +153,12 @@ router.post('/posts', withAuth, async (request, env) => {
       authorLogo: post.authorLogo,
       content: post.content,
       imageUrl: post.imageUrl,
+      images: post.images || [],
       likesCount: post.likesCount,
-      isLikedByUser: false
+      commentsCount: 0,
+      sharesCount: 0,
+      isLikedByUser: false,
+      isPinned: false
     };
   } catch (e: any) {
     return error(500, e.message);
@@ -187,6 +195,138 @@ router.post('/posts/:id/like', withAuth, async (request, env) => {
   };
 });
 
+// Protected: Get Comments for Post
+router.get('/posts/:id/comments', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const firestore = new FirestoreClient(env);
+  try {
+    const comments = await firestore.query('comments', 'postId', 'EQUAL', id);
+    return {
+      comments: comments.map((c: any) => ({
+        commentId: c.id,
+        postId: c.postId,
+        userId: c.userId,
+        authorName: c.authorName,
+        authorPhotoUrl: c.authorPhotoUrl,
+        content: c.content,
+        likesCount: c.likesCount || 0,
+        timestamp: c.timestamp
+      })),
+      total: comments.length,
+      hasMore: false
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Add Comment to Post
+router.post('/posts/:id/comments', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const content = await request.json() as any;
+  const firestore = new FirestoreClient(env);
+  const user = request.user;
+
+  try {
+    const newComment = {
+      postId: id,
+      userId: user.sub,
+      authorName: user.name || user.email,
+      authorPhotoUrl: user.picture || '',
+      content: content.content,
+      likesCount: 0,
+      timestamp: new Date().toISOString()
+    };
+
+    const comment = await firestore.createDocument('comments', newComment);
+    
+    return {
+      comment: {
+        commentId: comment.id,
+        ...newComment
+      }
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Delete Comment
+router.delete('/comments/:id', withAuth, async (request, env) => {
+  const { id } = request.params;
+  // TODO: Verify author or admin
+  return { success: true };
+});
+
+// Protected: Get Single Post
+router.get('/posts/:id', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const firestore = new FirestoreClient(env);
+  try {
+    const post = await firestore.getDocument('posts', id);
+    if (!post) return error(404, 'Post not found');
+    
+    // Fetch club details
+    let club = null;
+    if (post.clubId) {
+      club = await firestore.getDocument('clubs', post.clubId);
+    }
+
+    return {
+      post: {
+        postId: post.id,
+        clubId: post.clubId || '',
+        authorName: post.authorName,
+        authorLogo: post.authorLogo,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        images: post.images || (post.imageUrl ? [post.imageUrl] : []),
+        likesCount: post.likesCount,
+        commentsCount: post.commentsCount || 0,
+        sharesCount: post.sharesCount || 0,
+        isLikedByUser: false, // TODO: Check real status
+        isPinned: post.isPinned || false,
+        timestamp: post.timestamp
+      },
+      club: club ? {
+        clubId: club.id,
+        name: club.name,
+        district: club.district,
+        logoUrl: club.logoUrl || ''
+      } : null,
+      isFollowingClub: false // TODO: Check real status
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Share Post
+router.post('/posts/:id/share', withAuth, async (request, env) => {
+  return { shareId: 'share-123', sharesCount: 1 };
+});
+
+// Protected: Delete Post
+router.delete('/posts/:id', withAuth, async (request, env) => {
+  // TODO: Verify author or admin
+  return { success: true };
+});
+
+// Protected: Follow User
+router.post('/users/:id/follow', withAuth, async (request, env) => {
+  return { isFollowing: true, followersCount: 1 };
+});
+
+// Protected: Unfollow User
+router.delete('/users/:id/follow', withAuth, async (request, env) => {
+  return { followersCount: 0 };
+});
+
+// Protected: Follow Club
+router.post('/clubs/:id/follow', withAuth, async (request, env) => {
+  return { isFollowing: true, followersCount: 1 };
+});
+
 // Public: Get Districts
 router.get('/districts', async (request, env) => {
   const firestore = new FirestoreClient(env);
@@ -217,8 +357,46 @@ router.get('/clubs', async (request, env) => {
       name: c.name,
       district: c.district,
       description: c.description || '',
-      president: c.president || ''
+      president: c.president || '',
+      membersCount: c.membersCount || 0,
+      followersCount: c.followersCount || 0,
+      socialLinks: c.socialLinks || {},
+      email: c.email || '',
+      phone: c.phone || ''
     }));
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Get Public User Profile
+router.get('/users/:id', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const firestore = new FirestoreClient(env);
+  
+  try {
+    const userDoc = await firestore.getDocument('users', id);
+    if (!userDoc) {
+      return error(404, 'User not found');
+    }
+    
+    return {
+      profile: {
+        uid: userDoc.uid,
+        displayName: userDoc.displayName,
+        photoURL: userDoc.photoURL,
+        leoId: userDoc.leoId || '',
+        isWebmaster: userDoc.isWebmaster || false,
+        assignedClubId: userDoc.assignedClubId || '',
+        followingClubs: userDoc.followingClubs || []
+      },
+      stats: {
+        postsCount: userDoc.postsCount || 0,
+        followersCount: userDoc.followersCount || 0,
+        followingCount: userDoc.followingCount || 0
+      },
+      recentPosts: [] // TODO: Fetch recent posts
+    };
   } catch (e: any) {
     return error(500, e.message);
   }
@@ -247,7 +425,10 @@ router.get('/users/me', withAuth, async (request, env) => {
       leoId: userDoc.leoId || '',
       isWebmaster: userDoc.isWebmaster || false,
       assignedClubId: userDoc.assignedClubId || '',
-      followingClubs: userDoc.followingClubs || []
+      followingClubs: userDoc.followingClubs || [],
+      followersCount: userDoc.followersCount || 0,
+      followingCount: userDoc.followingCount || 0,
+      postsCount: userDoc.postsCount || 0
     };
   } catch (e: any) {
     return error(500, e.message);
