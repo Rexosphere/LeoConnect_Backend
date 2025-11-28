@@ -39,5 +39,13 @@
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
-	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
+	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "leoconnect-db",
+			"database_id": "b85c0061-597d-44e2-9ff7-2e57f5b52aa6",
+			"remote": true
+		}
+	]
 }
