@@ -197,7 +197,7 @@ export class FirestoreClient {
     return this.formatDocument(doc);
   }
 
-  async updateDocument(collection: string, id: string, data: any) {
+    async updateDocument(collection: string, id: string, data: any) {
       // Convert JSON to Firestore format
       const fields: any = {};
       for (const key in data) {
@@ -223,5 +223,18 @@ export class FirestoreClient {
       }
       const doc = await response.json();
       return this.formatDocument(doc);
+    }
+
+    async deleteDocument(collection: string, id: string) {
+        const token = await this.getAccessToken();
+        const response = await fetch(`${this.baseUrl}/${collection}/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to delete document ${collection}/${id}: ${response.statusText}`);
+        }
+        return true;
     }
 }
