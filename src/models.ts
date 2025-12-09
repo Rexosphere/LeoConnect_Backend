@@ -8,9 +8,10 @@ export interface UserProfile {
   isWebmaster: boolean;
   assignedClubId: string | null;
   followingClubs: string[];
-  postsCount: number;
-  followersCount: number;
-  followingCount: number;
+  onboardingCompleted: boolean;
+  postsCount?: number; // Computed from posts relationship
+  followersCount?: number; // Computed from user_follows relationship
+  followingCount?: number; // Computed from user_follows relationship
   isFollowing?: boolean;
   isMutualFollow?: boolean;
 }
@@ -23,9 +24,9 @@ export interface Club {
   description: string | null;
   logoUrl: string | null;
   coverImageUrl: string | null;
-  membersCount: number;
-  followersCount: number;
-  postsCount: number | null;
+  membersCount?: number; // Computed from users with assigned_club_id
+  followersCount?: number; // Computed from user_following_clubs relationship
+  postsCount?: number; // Computed from posts relationship
   isFollowing: boolean;
   isOfficial: boolean | null;
   isUserAdmin: boolean | null;
@@ -72,6 +73,24 @@ export interface Comment {
   isLikedByUser: boolean;
 }
 
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface Conversation {
+  userId: string;
+  displayName: string;
+  photoUrl: string | null;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}
+
 export interface District {
   name: string;
   totalClubs: number;
@@ -90,9 +109,10 @@ export const mapToUserProfile = (data: any, uid: string): UserProfile => ({
   isWebmaster: data.isWebmaster || false,
   assignedClubId: data.assignedClubId || null,
   followingClubs: data.followingClubs || [],
-  postsCount: data.postsCount || 0,
-  followersCount: data.followersCount || 0,
-  followingCount: data.followingCount || 0,
+  onboardingCompleted: data.onboardingCompleted || false,
+  postsCount: data.postsCount,
+  followersCount: data.followersCount,
+  followingCount: data.followingCount,
   isFollowing: data.isFollowing, // Computed
   isMutualFollow: data.isMutualFollow // Computed
 });
@@ -150,4 +170,13 @@ export const mapToComment = (data: any, id: string): Comment => ({
   createdAt: data.timestamp || new Date().toISOString(),
   likesCount: data.likesCount || 0,
   isLikedByUser: data.isLikedByUser || false // Computed
+});
+
+export const mapToMessage = (data: any): Message => ({
+  id: data.id,
+  senderId: data.sender_id,
+  receiverId: data.receiver_id,
+  content: data.content,
+  isRead: data.is_read === 1,
+  createdAt: data.created_at
 });

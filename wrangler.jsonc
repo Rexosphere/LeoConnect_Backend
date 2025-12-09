@@ -40,6 +40,13 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
 	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }],
+	"routes": [
+		{
+			"pattern": "leoconnect.rexosphere.com",
+			"zone_name": "rexosphere.com",
+			"custom_domain": true
+		}
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
