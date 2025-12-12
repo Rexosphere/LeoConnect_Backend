@@ -6,6 +6,7 @@ export interface UserProfile {
   leoId: string | null;
   bio: string | null;
   isWebmaster: boolean;
+  isVerified: boolean;
   assignedClubId: string | null;
   followingClubs: string[];
   onboardingCompleted: boolean;
@@ -107,6 +108,7 @@ export const mapToUserProfile = (data: any, uid: string): UserProfile => ({
   leoId: data.leoId || null,
   bio: data.bio || null,
   isWebmaster: data.isWebmaster || false,
+  isVerified: data.isVerified || false,
   assignedClubId: data.assignedClubId || null,
   followingClubs: data.followingClubs || [],
   onboardingCompleted: data.onboardingCompleted || false,
