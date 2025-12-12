@@ -2367,26 +2367,43 @@ router.put('/admin/users/:id', withAdminAuth, async (request: IRequest, env: Env
   try {
     const now = new Date().toISOString();
 
-    await env.DB.prepare(`
-      UPDATE users SET 
-        leo_id = COALESCE(?, leo_id),
-        display_name = COALESCE(?, display_name),
-        bio = COALESCE(?, bio),
-        is_webmaster = COALESCE(?, is_webmaster),
-        is_verified = COALESCE(?, is_verified),
-        assigned_club_id = COALESCE(?, assigned_club_id),
-        updated_at = ?
-      WHERE uid = ?
-    `).bind(
-      body.leo_id !== undefined ? body.leo_id : null,
-      body.display_name || null,
-      body.bio || null,
-      body.is_webmaster !== undefined ? (body.is_webmaster ? 1 : 0) : null,
-      body.is_verified !== undefined ? (body.is_verified ? 1 : 0) : null,
-      body.assigned_club_id || null,
-      now,
-      id
-    ).run();
+    // Build dynamic UPDATE query - only update fields that are explicitly provided
+    const updates: string[] = ['updated_at = ?'];
+    const params: any[] = [now];
+
+    if (body.leo_id !== undefined) {
+      updates.push('leo_id = ?');
+      params.push(body.leo_id || null);
+    }
+
+    if (body.display_name !== undefined) {
+      updates.push('display_name = ?');
+      params.push(body.display_name || null);
+    }
+
+    if (body.bio !== undefined) {
+      updates.push('bio = ?');
+      params.push(body.bio || null);
+    }
+
+    if (body.is_webmaster !== undefined) {
+      updates.push('is_webmaster = ?');
+      params.push(body.is_webmaster ? 1 : 0);
+    }
+
+    if (body.is_verified !== undefined) {
+      updates.push('is_verified = ?');
+      params.push(body.is_verified ? 1 : 0);
+    }
+
+    if (body.assigned_club_id !== undefined) {
+      updates.push('assigned_club_id = ?');
+      params.push(body.assigned_club_id || null);
+    }
+
+    params.push(id); // For WHERE clause
+
+    await env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE uid = ?`).bind(...params).run();
 
     const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(id).first();
     return { success: true, user };
