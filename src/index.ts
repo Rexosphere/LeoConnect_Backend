@@ -106,6 +106,7 @@ router.post('/auth/google', async (request, env) => {
     leoId: user.leo_id,
     bio: user.bio,
     isWebmaster: user.is_webmaster === 1,
+    isVerified: user.is_verified === 1,
     assignedClubId: user.assigned_club_id,
     followingClubs: followingClubs,
     onboardingCompleted: user.onboarding_completed === 1,
@@ -295,6 +296,12 @@ router.post('/posts', withAuth, async (request, env) => {
   const user = request.user;
 
   try {
+    // Check if user is verified
+    const currentUser = await env.DB.prepare('SELECT is_verified FROM users WHERE uid = ?').bind(user.sub).first();
+    if (!currentUser || currentUser.is_verified !== 1) {
+      return error(403, 'You must verify your Leo ID before creating posts');
+    }
+
     // Input validation
     if (!content.content || typeof content.content !== 'string') {
       return error(400, 'Post content is required');
@@ -771,6 +778,88 @@ router.post('/posts/:id/share', withAuth, async (request, env) => {
   }
 });
 
+// Protected: Update Post
+router.put('/posts/:id', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const user = request.user;
+  const body = await request.json() as any;
+
+  try {
+    // Get the post to verify ownership
+    const post = await env.DB.prepare('SELECT author_id FROM posts WHERE id = ?').bind(id).first();
+
+    if (!post) {
+      return error(404, 'Post not found');
+    }
+
+    // Check if user is the author or a webmaster (admin)
+    const currentUser = await env.DB.prepare('SELECT is_webmaster FROM users WHERE uid = ?').bind(user.sub).first();
+    const isWebmaster = currentUser && currentUser.is_webmaster === 1;
+
+    if (post.author_id !== user.sub && !isWebmaster) {
+      return error(403, 'You can only edit your own posts');
+    }
+
+    // Validate content
+    if (!body.content || typeof body.content !== 'string') {
+      return error(400, 'Post content is required');
+    }
+
+    const trimmedContent = body.content.trim();
+    if (trimmedContent.length === 0) {
+      return error(400, 'Post content cannot be empty');
+    }
+
+    if (trimmedContent.length > 5000) {
+      return error(400, 'Post content exceeds maximum length of 5000 characters');
+    }
+
+    // Update the post
+    const now = new Date().toISOString();
+    await env.DB.prepare(`
+      UPDATE posts SET content = ?, updated_at = ? WHERE id = ?
+    `).bind(trimmedContent, now, id).run();
+
+    // Return updated post
+    const updatedPost = await env.DB.prepare(`
+      SELECT p.*, u.display_name as author_name, u.photo_url as author_logo, c.name as club_name
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.uid
+      LEFT JOIN clubs c ON p.club_id = c.id
+      WHERE p.id = ?
+    `).bind(id).first();
+
+    if (!updatedPost) {
+      return error(500, 'Failed to retrieve updated post');
+    }
+
+    // Check if liked by user
+    const like = await env.DB.prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_id = ?').bind(id, user.sub).first();
+    const isLiked = !!like;
+
+    const counts = await getPostCounts(env.DB, id);
+
+    return {
+      postId: updatedPost.id,
+      clubId: updatedPost.club_id,
+      clubName: updatedPost.club_name,
+      authorId: updatedPost.author_id,
+      authorName: updatedPost.author_name,
+      authorLogo: updatedPost.author_logo,
+      content: updatedPost.content,
+      imageUrl: updatedPost.image_url,
+      images: updatedPost.image_url ? [updatedPost.image_url] : [],
+      ...counts,
+      isLikedByUser: isLiked,
+      isPinned: updatedPost.is_pinned === 1,
+      createdAt: updatedPost.created_at,
+      updatedAt: updatedPost.updated_at
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
 // Protected: Delete Post
 router.delete('/posts/:id', withAuth, async (request, env) => {
   const { id } = request.params;
@@ -1140,6 +1229,75 @@ router.get('/clubs/:id/members', withAuth, async (request, env) => {
 
     return {
       members,
+      total,
+      hasMore: offsetNum + limitNum < total
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Protected: Get User Following Clubs
+router.get('/users/:id/following-clubs', withAuth, async (request, env) => {
+  const { id } = request.params;
+  const { limit, offset } = request.query;
+  const currentUser = request.user;
+
+  const limitNum = parseInt(limit as string) || 50;
+  const offsetNum = parseInt(offset as string) || 0;
+
+  try {
+    // Check if user exists
+    const user = await env.DB.prepare('SELECT uid FROM users WHERE uid = ?').bind(id).first();
+    if (!user) {
+      return error(404, 'User not found');
+    }
+
+    // Get total count
+    const totalResult = await env.DB.prepare(
+      'SELECT COUNT(*) as count FROM user_following_clubs WHERE user_id = ?'
+    ).bind(id).first();
+    const total = (totalResult as any)?.count || 0;
+
+    // Get following clubs with pagination
+    const { results } = await env.DB.prepare(`
+      SELECT c.*
+      FROM user_following_clubs ufc
+      JOIN clubs c ON ufc.club_id = c.id
+      WHERE ufc.user_id = ?
+      ORDER BY ufc.created_at DESC
+      LIMIT ? OFFSET ?
+    `).bind(id, limitNum, offsetNum).all();
+
+    // Map clubs with counts
+    const clubs = await Promise.all(results.map(async (club: any) => {
+      const counts = await getClubCounts(env.DB, club.id);
+      const isFollowing = await isUserFollowingClub(env.DB, currentUser.sub, club.id);
+
+      return {
+        clubId: club.id,
+        name: club.name,
+        district: club.district,
+        districtId: club.district_id,
+        description: club.description,
+        logoUrl: club.logo_url,
+        coverImageUrl: club.cover_image_url,
+        isOfficial: club.is_official === 1,
+        address: club.address,
+        email: club.email,
+        phone: club.phone,
+        socialLinks: {
+          facebook: club.facebook_url,
+          instagram: club.instagram_url,
+          twitter: club.twitter_url
+        },
+        ...counts,
+        isFollowing
+      };
+    }));
+
+    return {
+      clubs,
       total,
       hasMore: offsetNum + limitNum < total
     };
@@ -1519,6 +1677,7 @@ router.get('/users/:id', withAuth, async (request, env) => {
       leoId: user.leo_id,
       bio: user.bio,
       isWebmaster: user.is_webmaster === 1,
+      isVerified: user.is_verified === 1,
       assignedClubId: user.assigned_club_id,
       followingClubs: followingClubs,
       onboardingCompleted: user.onboarding_completed === 1,
@@ -2559,6 +2718,12 @@ router.post('/events', withAuth, async (request, env) => {
   const user = request.user;
 
   try {
+    // Check if user is verified
+    const currentUser = await env.DB.prepare('SELECT is_verified FROM users WHERE uid = ?').bind(user.sub).first();
+    if (!currentUser || currentUser.is_verified !== 1) {
+      return error(403, 'You must verify your Leo ID before creating events');
+    }
+
     // Input validation
     if (!content.name || typeof content.name !== 'string') {
       return error(400, 'Event name is required');
