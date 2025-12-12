@@ -39,6 +39,9 @@ export interface Env {
 
 const { preflight, corsify } = cors();
 
+// Type alias for route handlers to avoid implicit any errors
+type RouteHandler = (request: IRequest, env: Env) => Response | Promise<Response> | object | Promise<object>;
+
 const router = AutoRouter({
   before: [preflight],
   finally: [corsify],
@@ -369,7 +372,7 @@ router.post('/posts', withAuth, async (request, env) => {
 });
 
 // Helper route to serve images from R2
-router.get('/images/:path+', async (request, env) => {
+router.get('/images/:path+', async (request: IRequest, env: Env) => {
   const { path } = request.params;
   const object = await env.MY_BUCKET.get(path);
 
