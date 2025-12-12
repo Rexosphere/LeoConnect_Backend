@@ -2200,6 +2200,40 @@ router.get('/admin/messages', withAdminAuth, async (request, env) => {
   }
 });
 
+// Admin: Update a user (edit Leo ID, etc.)
+router.put('/admin/users/:id', withAdminAuth, async (request: IRequest, env: Env) => {
+  const { id } = request.params;
+  const body = await request.json() as any;
+
+  try {
+    const now = new Date().toISOString();
+
+    await env.DB.prepare(`
+      UPDATE users SET 
+        leo_id = COALESCE(?, leo_id),
+        display_name = COALESCE(?, display_name),
+        bio = COALESCE(?, bio),
+        is_webmaster = COALESCE(?, is_webmaster),
+        assigned_club_id = COALESCE(?, assigned_club_id),
+        updated_at = ?
+      WHERE uid = ?
+    `).bind(
+      body.leo_id !== undefined ? body.leo_id : null,
+      body.display_name || null,
+      body.bio || null,
+      body.is_webmaster !== undefined ? (body.is_webmaster ? 1 : 0) : null,
+      body.assigned_club_id || null,
+      now,
+      id
+    ).run();
+
+    const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(id).first();
+    return { success: true, user };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
 // Admin: Delete a user
 router.delete('/admin/users/:id', withAdminAuth, async (request, env) => {
   const { id } = request.params;
