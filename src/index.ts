@@ -2224,6 +2224,179 @@ router.delete('/admin/posts/:id', withAdminAuth, async (request, env) => {
   }
 });
 
+// Simple password hash verification (using SHA-256 for Cloudflare Workers compatibility)
+async function verifyAdminPassword(password: string, hash: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex === hash;
+}
+
+// Admin Login - with SHA-256 password verification
+router.post('/admin/login', async (request: IRequest, env: Env) => {
+  const body = await request.json() as { email: string; password: string };
+
+  if (!body.email || !body.password) {
+    return error(400, 'Email and password required');
+  }
+
+  const adminEmail = 'admin@leoconnect.com';
+  // SHA-256 hash of 'LeoAdmin2024!'
+  const adminPasswordHash = '909d7529e750eaacb1efca6dd50da55e197a4b1e0cf528e3d5c8e615c2167cab';
+
+  if (body.email !== adminEmail) {
+    return error(401, 'Invalid credentials');
+  }
+
+  const isValid = await verifyAdminPassword(body.password, adminPasswordHash);
+  if (!isValid) {
+    return error(401, 'Invalid credentials');
+  }
+
+  return {
+    success: true,
+    user: { email: adminEmail, name: 'Admin' },
+    apiKey: ADMIN_API_KEY
+  };
+});
+
+// Admin: Create User
+router.post('/admin/users', withAdminAuth, async (request: IRequest, env: Env) => {
+  const body = await request.json() as any;
+
+  if (!body.email || !body.display_name) {
+    return error(400, 'Email and display name are required');
+  }
+
+  try {
+    const uid = `user-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const now = new Date().toISOString();
+
+    await env.DB.prepare(`
+      INSERT INTO users (uid, email, display_name, photo_url, leo_id, bio, is_webmaster, assigned_club_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      uid, body.email, body.display_name, body.photo_url || null, body.leo_id || null,
+      body.bio || null, body.is_webmaster ? 1 : 0, body.assigned_club_id || null, now, now
+    ).run();
+
+    const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(uid).first();
+    return { success: true, user };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Create Club
+router.post('/admin/clubs', withAdminAuth, async (request: IRequest, env: Env) => {
+  const body = await request.json() as any;
+
+  if (!body.name || !body.district || !body.district_id) {
+    return error(400, 'Name, district, and district_id are required');
+  }
+
+  try {
+    const clubId = `club-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const now = new Date().toISOString();
+
+    await env.DB.prepare(`
+      INSERT INTO clubs (id, name, district, district_id, description, logo_url, cover_image_url, 
+        email, phone, address, facebook_url, instagram_url, twitter_url, is_official, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      clubId, body.name, body.district, body.district_id, body.description || null,
+      body.logo_url || null, body.cover_image_url || null, body.email || null, body.phone || null,
+      body.address || null, body.facebook_url || null, body.instagram_url || null,
+      body.twitter_url || null, body.is_official ? 1 : 0, now, now
+    ).run();
+
+    await env.DB.prepare('UPDATE districts SET total_clubs = total_clubs + 1 WHERE name = ?').bind(body.district).run();
+
+    const club = await env.DB.prepare('SELECT * FROM clubs WHERE id = ?').bind(clubId).first();
+    return { success: true, club };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Update Club
+router.put('/admin/clubs/:id', withAdminAuth, async (request: IRequest, env: Env) => {
+  const { id } = request.params;
+  const body = await request.json() as any;
+
+  try {
+    const now = new Date().toISOString();
+
+    await env.DB.prepare(`
+      UPDATE clubs SET 
+        name = COALESCE(?, name), district = COALESCE(?, district), district_id = COALESCE(?, district_id),
+        description = COALESCE(?, description), logo_url = COALESCE(?, logo_url), cover_image_url = COALESCE(?, cover_image_url),
+        email = COALESCE(?, email), phone = COALESCE(?, phone), address = COALESCE(?, address),
+        facebook_url = COALESCE(?, facebook_url), instagram_url = COALESCE(?, instagram_url),
+        twitter_url = COALESCE(?, twitter_url), is_official = COALESCE(?, is_official), updated_at = ?
+      WHERE id = ?
+    `).bind(
+      body.name || null, body.district || null, body.district_id || null, body.description || null,
+      body.logo_url || null, body.cover_image_url || null, body.email || null, body.phone || null,
+      body.address || null, body.facebook_url || null, body.instagram_url || null, body.twitter_url || null,
+      body.is_official !== undefined ? (body.is_official ? 1 : 0) : null, now, id
+    ).run();
+
+    const club = await env.DB.prepare('SELECT * FROM clubs WHERE id = ?').bind(id).first();
+    return { success: true, club };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Delete Club
+router.delete('/admin/clubs/:id', withAdminAuth, async (request: IRequest, env: Env) => {
+  const { id } = request.params;
+
+  try {
+    const club = await env.DB.prepare('SELECT district FROM clubs WHERE id = ?').bind(id).first();
+    await env.DB.prepare('DELETE FROM clubs WHERE id = ?').bind(id).run();
+    if (club?.district) {
+      await env.DB.prepare('UPDATE districts SET total_clubs = MAX(0, total_clubs - 1) WHERE name = ?').bind(club.district).run();
+    }
+    return { success: true };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Create District
+router.post('/admin/districts', withAdminAuth, async (request: IRequest, env: Env) => {
+  const body = await request.json() as any;
+
+  if (!body.name) {
+    return error(400, 'District name is required');
+  }
+
+  try {
+    await env.DB.prepare(`INSERT INTO districts (name, total_clubs, total_members) VALUES (?, ?, ?)`)
+      .bind(body.name, body.total_clubs || 0, body.total_members || 0).run();
+    const district = await env.DB.prepare('SELECT * FROM districts WHERE name = ?').bind(body.name).first();
+    return { success: true, district };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Delete District
+router.delete('/admin/districts/:name', withAdminAuth, async (request: IRequest, env: Env) => {
+  const { name } = request.params;
+
+  try {
+    await env.DB.prepare('DELETE FROM districts WHERE name = ?').bind(name).run();
+    return { success: true };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
 // ==================== EVENT ENDPOINTS ====================
 
 // Protected: Get All Events
