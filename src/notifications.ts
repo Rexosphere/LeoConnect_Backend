@@ -37,7 +37,7 @@ export async function sendNotification(
     const prefs = await db.prepare(
       'SELECT * FROM notification_preferences WHERE user_id = ?'
     ).bind(userId).first();
-    
+
     // If no preferences exist, create default ones (all enabled)
     if (!prefs) {
       await db.prepare(`
@@ -52,7 +52,7 @@ export async function sendNotification(
         return;
       }
     }
-    
+
     // Save notification to database
     const notificationId = `notif-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     await db.prepare(`
@@ -67,17 +67,17 @@ export async function sendNotification(
       notification.data ? JSON.stringify(notification.data) : null,
       new Date().toISOString()
     ).run();
-    
+
     // Get user's FCM tokens
     const { results: tokens } = await db.prepare(
       'SELECT token FROM fcm_tokens WHERE user_id = ?'
     ).bind(userId).all();
-    
+
     if (tokens.length === 0) {
       console.log(`No FCM tokens found for user ${userId}`);
       return;
     }
-    
+
     // Send FCM notification to all user's devices
     const fcmMessages: FCMMessage[] = tokens.map((t: any) => ({
       token: t.token,
@@ -101,12 +101,12 @@ export async function sendNotification(
         },
       },
     }));
-    
+
     // Send notifications using Firebase Admin SDK
     // Note: This requires Firebase Admin SDK to be properly configured
     // For Cloudflare Workers, we'll use the REST API instead
     await sendFCMNotifications(fcmMessages, env);
-    
+
   } catch (error) {
     console.error('Error sending notification:', error);
     // Don't throw - notifications are non-critical
@@ -116,12 +116,12 @@ export async function sendNotification(
 async function sendFCMNotifications(messages: FCMMessage[], env: any): Promise<void> {
   // Get Firebase access token using service account
   const accessToken = await getFirebaseAccessToken(env);
-  
+
   if (!accessToken) {
     console.error('Failed to get Firebase access token');
     return;
   }
-  
+
   // Send each message (in production, use batch sending)
   const promises = messages.map(async (message) => {
     try {
@@ -136,7 +136,7 @@ async function sendFCMNotifications(messages: FCMMessage[], env: any): Promise<v
           body: JSON.stringify({ message }),
         }
       );
-      
+
       if (!response.ok) {
         const error = await response.text();
         console.error('FCM send error:', error);
@@ -145,7 +145,7 @@ async function sendFCMNotifications(messages: FCMMessage[], env: any): Promise<v
       console.error('Error sending FCM message:', error);
     }
   });
-  
+
   await Promise.all(promises);
 }
 
@@ -161,16 +161,16 @@ async function getFirebaseAccessToken(env: any): Promise<string | null> {
       exp: now + 3600,
       scope: 'https://www.googleapis.com/auth/firebase.messaging',
     };
-    
+
     // Sign JWT with private key
     const privateKey = env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-    
+
     // For Cloudflare Workers, we need to use Web Crypto API
     // This is a simplified version - in production, use a proper JWT library
     const encoder = new TextEncoder();
     const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const payloadStr = btoa(JSON.stringify(payload));
-    
+
     const key = await crypto.subtle.importKey(
       'pkcs8',
       pemToArrayBuffer(privateKey),
@@ -178,15 +178,15 @@ async function getFirebaseAccessToken(env: any): Promise<string | null> {
       false,
       ['sign']
     );
-    
+
     const signature = await crypto.subtle.sign(
       'RSASSA-PKCS1-v1_5',
       key,
       encoder.encode(`${header}.${payloadStr}`)
     );
-    
+
     const jwt = `${header}.${payloadStr}.${arrayBufferToBase64(signature)}`;
-    
+
     // Exchange JWT for access token
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -196,12 +196,12 @@ async function getFirebaseAccessToken(env: any): Promise<string | null> {
         assertion: jwt,
       }),
     });
-    
+
     if (!response.ok) {
       console.error('Failed to get access token:', await response.text());
       return null;
     }
-    
+
     const data = await response.json() as any;
     return data.access_token;
   } catch (error) {

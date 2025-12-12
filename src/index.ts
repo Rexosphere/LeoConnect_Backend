@@ -214,6 +214,19 @@ router.get('/feed', withAuth, async (request, env) => {
       // Compute counts from relationships
       const counts = await getPostCounts(env.DB, p.id);
 
+      // Parse images from images_json or fallback to imageUrl
+      let images: string[] = [];
+      if (p.images_json) {
+        try {
+          images = JSON.parse(p.images_json);
+        } catch (e) {
+          console.error('Failed to parse images_json:', e);
+        }
+      }
+      if (images.length === 0 && p.image_url) {
+        images = [p.image_url];
+      }
+
       const postData = {
         id: p.id,
         clubId: p.club_id,
@@ -223,7 +236,7 @@ router.get('/feed', withAuth, async (request, env) => {
         authorLogo: p.author_logo,
         content: p.content,
         imageUrl: p.image_url,
-        images: p.image_url ? [p.image_url] : [],
+        images: images,
         ...counts,
         isPinned: p.is_pinned === 1,
         timestamp: p.created_at,
@@ -264,6 +277,19 @@ router.get('/explore', withAuth, async (request, env) => {
       // Compute counts from relationships
       const counts = await getPostCounts(env.DB, p.id);
 
+      // Parse images from images_json or fallback to imageUrl
+      let images: string[] = [];
+      if (p.images_json) {
+        try {
+          images = JSON.parse(p.images_json);
+        } catch (e) {
+          console.error('Failed to parse images_json:', e);
+        }
+      }
+      if (images.length === 0 && p.image_url) {
+        images = [p.image_url];
+      }
+
       const postData = {
         id: p.id,
         clubId: p.club_id,
@@ -273,7 +299,7 @@ router.get('/explore', withAuth, async (request, env) => {
         authorLogo: p.author_logo,
         content: p.content,
         imageUrl: p.image_url,
-        images: p.image_url ? [p.image_url] : [],
+        images: images,
         ...counts,
         isPinned: p.is_pinned === 1,
         timestamp: p.created_at,
@@ -317,54 +343,69 @@ router.post('/posts', withAuth, async (request, env) => {
       return error(400, 'Post content exceeds maximum length of 5000 characters');
     }
 
-    // Validate image size if provided (max 10MB base64)
-    if (content.imageBytes && content.imageBytes.length > 13333333) {
-      return error(400, 'Image size exceeds maximum of 10MB');
+    // Handle multiple images (up to 4)
+    const imagesList = content.imagesList || [];
+
+    // Validate number of images
+    if (imagesList.length > 4) {
+      return error(400, 'Maximum of 4 images allowed per post');
     }
 
-    let imageUrl = null;
-
-    // Handle Image Upload to Discord
-    if (content.imageBytes && content.imageBytes.length > 0) {
-      try {
-        // Decode base64 image data
-        const imageData = Uint8Array.from(atob(content.imageBytes), c => c.charCodeAt(0));
-
-        // Generate unique filename
-        const timestamp = Date.now();
-        const randomId = Math.random().toString(36).substring(7);
-        const extension = content.imageMimeType?.split('/')[1] || 'jpg';
-        const filename = `post-${timestamp}-${randomId}.${extension}`;
-
-        // Create FormData for Discord webhook
-        const formData = new FormData();
-        const blob = new Blob([imageData], { type: content.imageMimeType || 'image/jpeg' });
-        formData.append('file', blob, filename);
-
-        // Upload to Discord webhook
-        const discordResponse = await fetch(env.DISCORD_WEBHOOK_URL, {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!discordResponse.ok) {
-          throw new Error(`Discord upload failed: ${discordResponse.statusText}`);
-        }
-
-        const discordJson = await discordResponse.json() as any;
-        const attachment = discordJson.attachments?.[0];
-
-        if (!attachment?.url) {
-          throw new Error('No attachment URL in Discord response');
-        }
-
-        // Store the Discord CDN URL directly in database
-        imageUrl = attachment.url;
-      } catch (uploadError) {
-        console.error('Image upload failed:', uploadError);
-        // Continue without image if upload fails
+    // Validate each image size (max 10MB base64 each)
+    for (const img of imagesList) {
+      if (img.imageBytes && img.imageBytes.length > 13333333) {
+        return error(400, 'Each image size must not exceed 10MB');
       }
     }
+
+    const imageUrls: string[] = [];
+
+    // Handle Multiple Image Uploads to Discord
+    for (const img of imagesList) {
+      if (img.imageBytes && img.imageBytes.length > 0) {
+        try {
+          // Decode base64 image data
+          const imageData = Uint8Array.from(atob(img.imageBytes), c => c.charCodeAt(0));
+
+          // Generate unique filename
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(7);
+          const extension = img.imageMimeType?.split('/')[1] || 'jpg';
+          const filename = `post-${timestamp}-${randomId}.${extension}`;
+
+          // Create FormData for Discord webhook
+          const formData = new FormData();
+          const blob = new Blob([imageData], { type: img.imageMimeType || 'image/jpeg' });
+          formData.append('file', blob, filename);
+
+          // Upload to Discord webhook
+          const discordResponse = await fetch(env.DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!discordResponse.ok) {
+            throw new Error(`Discord upload failed: ${discordResponse.statusText}`);
+          }
+
+          const discordJson = await discordResponse.json() as any;
+          const attachment = discordJson.attachments?.[0];
+
+          if (!attachment?.url) {
+            throw new Error('No attachment URL in Discord response');
+          }
+
+          // Add the Discord CDN URL to our list
+          imageUrls.push(attachment.url);
+        } catch (uploadError) {
+          console.error('Image upload failed:', uploadError);
+          // Continue without this image if upload fails
+        }
+      }
+    }
+
+    // For backward compatibility, set imageUrl to first image if available
+    const imageUrl = imageUrls.length > 0 ? imageUrls[0] : null;
 
     let clubId = content.clubId;
     if (!clubId) {
@@ -380,16 +421,18 @@ router.post('/posts', withAuth, async (request, env) => {
 
     const postId = `post-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const now = new Date().toISOString();
+    const imagesJson = imageUrls.length > 0 ? JSON.stringify(imageUrls) : null;
 
     await env.DB.prepare(`
-        INSERT INTO posts (id, club_id, author_id, content, image_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO posts (id, club_id, author_id, content, image_url, images_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       postId,
       clubId,
       user.sub,
       content.content,
       imageUrl,
+      imagesJson,
       now,
       now
     ).run();
@@ -439,7 +482,7 @@ router.post('/posts', withAuth, async (request, env) => {
       authorLogo: newPost.author_logo,
       content: newPost.content,
       imageUrl: newPost.image_url,
-      images: newPost.image_url ? [newPost.image_url] : [],
+      images: imageUrls,
       likesCount: 0,
       commentsCount: 0,
       sharesCount: 0,
@@ -694,6 +737,19 @@ router.get('/posts/:id', withAuth, async (request, env) => {
     const like = await env.DB.prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_id = ?').bind(post.id, user.sub).first();
     const isLiked = !!like;
 
+    // Parse images from images_json or fallback to imageUrl
+    let images: string[] = [];
+    if (post.images_json) {
+      try {
+        images = JSON.parse(post.images_json);
+      } catch (e) {
+        console.error('Failed to parse images_json:', e);
+      }
+    }
+    if (images.length === 0 && post.image_url) {
+      images = [post.image_url];
+    }
+
     const postData = {
       id: post.id,
       clubId: post.club_id,
@@ -703,7 +759,7 @@ router.get('/posts/:id', withAuth, async (request, env) => {
       authorLogo: post.author_logo,
       content: post.content,
       imageUrl: post.image_url,
-      images: post.image_url ? [post.image_url] : [],
+      images: images,
       likesCount: post.likes_count,
       commentsCount: post.comments_count,
       sharesCount: post.shares_count,
@@ -1617,6 +1673,19 @@ router.get('/clubs/:id/posts', async (request, env) => {
       let isLiked = false;
       // TODO: If we have userSub, check likes
 
+      // Parse images from images_json or fallback to imageUrl
+      let images: string[] = [];
+      if (p.images_json) {
+        try {
+          images = JSON.parse(p.images_json);
+        } catch (e) {
+          console.error('Failed to parse images_json:', e);
+        }
+      }
+      if (images.length === 0 && p.image_url) {
+        images = [p.image_url];
+      }
+
       const postData = {
         id: p.id,
         clubId: p.club_id,
@@ -1626,7 +1695,7 @@ router.get('/clubs/:id/posts', async (request, env) => {
         authorLogo: p.author_logo,
         content: p.content,
         imageUrl: p.image_url,
-        images: p.image_url ? [p.image_url] : [],
+        images: images,
         likesCount: p.likes_count,
         commentsCount: p.comments_count,
         sharesCount: p.shares_count,
@@ -1801,6 +1870,19 @@ router.get('/search', async (request, env) => {
         ORDER BY p.created_at DESC LIMIT 20
     `).bind(query).all();
     const posts = await Promise.all(postsResults.results.map(async (p: any) => {
+      // Parse images from images_json or fallback to imageUrl
+      let images: string[] = [];
+      if (p.images_json) {
+        try {
+          images = JSON.parse(p.images_json);
+        } catch (e) {
+          console.error('Failed to parse images_json:', e);
+        }
+      }
+      if (images.length === 0 && p.image_url) {
+        images = [p.image_url];
+      }
+
       const postData = {
         id: p.id,
         clubId: p.club_id,
@@ -1810,7 +1892,7 @@ router.get('/search', async (request, env) => {
         authorLogo: p.author_logo,
         content: p.content,
         imageUrl: p.image_url,
-        images: p.image_url ? [p.image_url] : [],
+        images: images,
         likesCount: p.likes_count,
         commentsCount: p.comments_count,
         sharesCount: p.shares_count,
@@ -1849,6 +1931,19 @@ router.get('/users/:id/posts', async (request, env) => {
       let isLiked = false;
       // TODO: Check likes if auth token present
 
+      // Parse images from images_json or fallback to imageUrl
+      let images: string[] = [];
+      if (p.images_json) {
+        try {
+          images = JSON.parse(p.images_json);
+        } catch (e) {
+          console.error('Failed to parse images_json:', e);
+        }
+      }
+      if (images.length === 0 && p.image_url) {
+        images = [p.image_url];
+      }
+
       const postData = {
         id: p.id,
         clubId: p.club_id,
@@ -1858,7 +1953,7 @@ router.get('/users/:id/posts', async (request, env) => {
         authorLogo: p.author_logo,
         content: p.content,
         imageUrl: p.image_url,
-        images: p.image_url ? [p.image_url] : [],
+        images: images,
         likesCount: p.likes_count,
         commentsCount: p.comments_count,
         sharesCount: p.shares_count,
@@ -1926,6 +2021,48 @@ router.patch('/users/me', withAuth, async (request, env) => {
   try {
     const updates: string[] = [];
     const params: any[] = [];
+
+    // Handle display name
+    if (body.displayName !== undefined) {
+      updates.push('display_name = ?');
+      params.push(body.displayName);
+    }
+
+    // Handle profile photo upload
+    if (body.photoBytes) {
+      try {
+        const base64Data = body.photoBytes;
+        const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+        // Validate image size (max 5MB for profile photos)
+        if (imageBuffer.length > 5 * 1024 * 1024) {
+          return error(400, 'Profile photo must be less than 5MB');
+        }
+
+        // Upload to Discord
+        const formData = new FormData();
+        const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
+        formData.append('file', blob, 'profile.jpg');
+
+        const discordResponse = await fetch(env.DISCORD_WEBHOOK_URL, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!discordResponse.ok) {
+          return error(500, 'Failed to upload profile photo');
+        }
+
+        const discordData: any = await discordResponse.json();
+        const photoUrl = discordData.attachments[0].url;
+
+        updates.push('photo_url = ?');
+        params.push(photoUrl);
+      } catch (uploadError: any) {
+        console.error('Photo upload error:', uploadError);
+        return error(500, 'Failed to process profile photo');
+      }
+    }
 
     if (body.leoId !== undefined) {
       updates.push('leo_id = ?');
