@@ -2373,6 +2373,7 @@ router.put('/admin/users/:id', withAdminAuth, async (request: IRequest, env: Env
         display_name = COALESCE(?, display_name),
         bio = COALESCE(?, bio),
         is_webmaster = COALESCE(?, is_webmaster),
+        is_verified = COALESCE(?, is_verified),
         assigned_club_id = COALESCE(?, assigned_club_id),
         updated_at = ?
       WHERE uid = ?
@@ -2381,6 +2382,7 @@ router.put('/admin/users/:id', withAdminAuth, async (request: IRequest, env: Env
       body.display_name || null,
       body.bio || null,
       body.is_webmaster !== undefined ? (body.is_webmaster ? 1 : 0) : null,
+      body.is_verified !== undefined ? (body.is_verified ? 1 : 0) : null,
       body.assigned_club_id || null,
       now,
       id
