@@ -1939,6 +1939,234 @@ router.delete('/conversations/:userId', withAuth, async (request, env) => {
   }
 });
 
+// ==================== ADMIN ROUTES ====================
+// Admin authentication middleware - uses hardcoded API key
+const ADMIN_API_KEY = 'leo-admin-secret-2024';
+
+const withAdminAuth = (request: IRequest, env: Env) => {
+  const apiKey = request.headers.get('X-Admin-Key');
+  if (apiKey !== ADMIN_API_KEY) {
+    return error(401, 'Invalid admin key');
+  }
+};
+
+// Admin: Get dashboard statistics
+router.get('/admin/stats', withAdminAuth, async (request, env) => {
+  try {
+    const usersCount = await env.DB.prepare('SELECT COUNT(*) as count FROM users').first();
+    const clubsCount = await env.DB.prepare('SELECT COUNT(*) as count FROM clubs').first();
+    const postsCount = await env.DB.prepare('SELECT COUNT(*) as count FROM posts').first();
+    const messagesCount = await env.DB.prepare('SELECT COUNT(*) as count FROM messages').first();
+    const districtsCount = await env.DB.prepare('SELECT COUNT(*) as count FROM districts').first();
+    const commentsCount = await env.DB.prepare('SELECT COUNT(*) as count FROM comments').first();
+
+    return {
+      users: usersCount?.count || 0,
+      clubs: clubsCount?.count || 0,
+      posts: postsCount?.count || 0,
+      messages: messagesCount?.count || 0,
+      districts: districtsCount?.count || 0,
+      comments: commentsCount?.count || 0
+    };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Get all users
+router.get('/admin/users', withAdminAuth, async (request, env) => {
+  const { limit, offset, search } = request.query;
+  const limitNum = parseInt(limit as string) || 50;
+  const offsetNum = parseInt(offset as string) || 0;
+
+  try {
+    let query = 'SELECT * FROM users';
+    const params: any[] = [];
+
+    if (search) {
+      query += ' WHERE display_name LIKE ? OR email LIKE ? OR leo_id LIKE ?';
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limitNum, offsetNum);
+
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) as count FROM users';
+    if (search) {
+      countQuery += ' WHERE display_name LIKE ? OR email LIKE ? OR leo_id LIKE ?';
+      const searchPattern = `%${search}%`;
+      const totalResult = await env.DB.prepare(countQuery).bind(searchPattern, searchPattern, searchPattern).first();
+      return { users: results, total: totalResult?.count || 0 };
+    }
+
+    const totalResult = await env.DB.prepare(countQuery).first();
+    return { users: results, total: totalResult?.count || 0 };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Get all clubs
+router.get('/admin/clubs', withAdminAuth, async (request, env) => {
+  const { limit, offset, search } = request.query;
+  const limitNum = parseInt(limit as string) || 50;
+  const offsetNum = parseInt(offset as string) || 0;
+
+  try {
+    let query = 'SELECT * FROM clubs';
+    const params: any[] = [];
+
+    if (search) {
+      query += ' WHERE name LIKE ? OR district LIKE ?';
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern);
+    }
+
+    query += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+    params.push(limitNum, offsetNum);
+
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) as count FROM clubs';
+    if (search) {
+      countQuery += ' WHERE name LIKE ? OR district LIKE ?';
+      const searchPattern = `%${search}%`;
+      const totalResult = await env.DB.prepare(countQuery).bind(searchPattern, searchPattern).first();
+      return { clubs: results, total: totalResult?.count || 0 };
+    }
+
+    const totalResult = await env.DB.prepare(countQuery).first();
+    return { clubs: results, total: totalResult?.count || 0 };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Get all districts with club counts
+router.get('/admin/districts', withAdminAuth, async (request, env) => {
+  try {
+    const { results: districts } = await env.DB.prepare('SELECT * FROM districts').all();
+
+    // Get club counts per district
+    const districtsWithCounts = await Promise.all(districts.map(async (d: any) => {
+      const countResult = await env.DB.prepare('SELECT COUNT(*) as count FROM clubs WHERE district = ?').bind(d.name).first();
+      return {
+        ...d,
+        clubs_count: countResult?.count || 0
+      };
+    }));
+
+    return { districts: districtsWithCounts, total: districts.length };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Get all posts
+router.get('/admin/posts', withAdminAuth, async (request, env) => {
+  const { limit, offset, search } = request.query;
+  const limitNum = parseInt(limit as string) || 50;
+  const offsetNum = parseInt(offset as string) || 0;
+
+  try {
+    let query = `
+      SELECT p.*, u.display_name as author_name, u.photo_url as author_logo, c.name as club_name
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.uid
+      LEFT JOIN clubs c ON p.club_id = c.id
+    `;
+    const params: any[] = [];
+
+    if (search) {
+      query += ' WHERE p.content LIKE ? OR u.display_name LIKE ?';
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern);
+    }
+
+    query += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limitNum, offsetNum);
+
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+
+    // Get counts for each post
+    const postsWithCounts = await Promise.all(results.map(async (p: any) => {
+      const counts = await getPostCounts(env.DB, p.id);
+      return { ...p, ...counts };
+    }));
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) as count FROM posts';
+    if (search) {
+      countQuery = `
+        SELECT COUNT(*) as count FROM posts p
+        LEFT JOIN users u ON p.author_id = u.uid
+        WHERE p.content LIKE ? OR u.display_name LIKE ?
+      `;
+      const searchPattern = `%${search}%`;
+      const totalResult = await env.DB.prepare(countQuery).bind(searchPattern, searchPattern).first();
+      return { posts: postsWithCounts, total: totalResult?.count || 0 };
+    }
+
+    const totalResult = await env.DB.prepare(countQuery).first();
+    return { posts: postsWithCounts, total: totalResult?.count || 0 };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Get all messages
+router.get('/admin/messages', withAdminAuth, async (request, env) => {
+  const { limit, offset } = request.query;
+  const limitNum = parseInt(limit as string) || 50;
+  const offsetNum = parseInt(offset as string) || 0;
+
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT m.*, 
+             s.display_name as sender_name, s.photo_url as sender_photo,
+             r.display_name as receiver_name, r.photo_url as receiver_photo
+      FROM messages m
+      LEFT JOIN users s ON m.sender_id = s.uid
+      LEFT JOIN users r ON m.receiver_id = r.uid
+      ORDER BY m.created_at DESC LIMIT ? OFFSET ?
+    `).bind(limitNum, offsetNum).all();
+
+    const totalResult = await env.DB.prepare('SELECT COUNT(*) as count FROM messages').first();
+    return { messages: results, total: totalResult?.count || 0 };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Delete a user
+router.delete('/admin/users/:id', withAdminAuth, async (request, env) => {
+  const { id } = request.params;
+  try {
+    await env.DB.prepare('DELETE FROM users WHERE uid = ?').bind(id).run();
+    return { success: true };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
+// Admin: Delete a post
+router.delete('/admin/posts/:id', withAdminAuth, async (request, env) => {
+  const { id } = request.params;
+  try {
+    await env.DB.prepare('DELETE FROM comments WHERE post_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM post_likes WHERE post_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
+    return { success: true };
+  } catch (e: any) {
+    return error(500, e.message);
+  }
+});
+
 // 404 handler
 router.all('*', () => error(404));
 
