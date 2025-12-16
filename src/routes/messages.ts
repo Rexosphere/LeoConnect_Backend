@@ -1,9 +1,10 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 import { notifyNewMessage } from '../notifications';
 
-export const messagesRouter = AutoRouter();
+export const messagesRouter = Router();
 
 // Protected: Send Message
 messagesRouter.post('/messages', withAuth, async (request: IRequest, env: Env) => {
@@ -11,7 +12,7 @@ messagesRouter.post('/messages', withAuth, async (request: IRequest, env: Env) =
   const body = await request.json() as any;
 
   if (!body.receiverId || !body.content) {
-    return error(400, 'Missing receiverId or content');
+    return json(400, { status: 400, error: 'Missing receiverId or content' });
   }
 
   try {
@@ -39,7 +40,7 @@ messagesRouter.post('/messages', withAuth, async (request: IRequest, env: Env) =
       createdAt: now
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -111,7 +112,7 @@ messagesRouter.get('/conversations', withAuth, async (request: IRequest, env: En
 
     return conversations.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -139,7 +140,7 @@ messagesRouter.get('/messages/:userId', withAuth, async (request: IRequest, env:
       createdAt: m.created_at
     }));
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -150,17 +151,17 @@ messagesRouter.delete('/messages/:id', withAuth, async (request: IRequest, env: 
 
   try {
     const message = await env.DB.prepare('SELECT * FROM messages WHERE id = ?').bind(id).first();
-    if (!message) return error(404, 'Message not found');
+    if (!message) return json(404, { status: 404, error: 'Message not found' });
 
     // Only sender can delete for now (or maybe receiver too? Let's allow sender)
     if (message.sender_id !== user.sub) {
-      return error(403, 'You can only delete your own messages');
+      return json(403, { status: 403, error: 'You can only delete your own messages' });
     }
 
     await env.DB.prepare('DELETE FROM messages WHERE id = ?').bind(id).run();
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -178,6 +179,6 @@ messagesRouter.delete('/conversations/:userId', withAuth, async (request: IReque
 
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

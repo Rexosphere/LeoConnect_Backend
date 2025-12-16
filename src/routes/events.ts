@@ -1,8 +1,9 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 
-export const eventsRouter = AutoRouter();
+export const eventsRouter = Router();
 
 // ==================== EVENT ENDPOINTS ====================
 
@@ -67,7 +68,7 @@ eventsRouter.get('/events', withAuth, async (request: IRequest, env: Env) => {
 
     return events;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -86,7 +87,7 @@ eventsRouter.get('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     `).bind(id).first();
 
     if (!event) {
-      return error(404, 'Event not found');
+      return json(404, { status: 404, error: 'Event not found' });
     }
 
     // Check if user has RSVP'd
@@ -122,7 +123,7 @@ eventsRouter.get('/events/:id', withAuth, async (request: IRequest, env: Env) =>
       updatedAt: event.updated_at
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -135,43 +136,43 @@ eventsRouter.post('/events', withAuth, async (request: IRequest, env: Env) => {
     // Check if user is verified
     const currentUser = await env.DB.prepare('SELECT is_verified FROM users WHERE uid = ?').bind(user.sub).first();
     if (!currentUser || currentUser.is_verified !== 1) {
-      return error(403, 'You must verify your Leo ID before creating events');
+      return json(403, { status: 403, error: 'You must verify your Leo ID before creating events' });
     }
 
     // Input validation
     if (!content.name || typeof content.name !== 'string') {
-      return error(400, 'Event name is required');
+      return json(400, { status: 400, error: 'Event name is required' });
     }
 
     if (!content.description || typeof content.description !== 'string') {
-      return error(400, 'Event description is required');
+      return json(400, { status: 400, error: 'Event description is required' });
     }
 
     if (!content.eventDate) {
-      return error(400, 'Event date is required');
+      return json(400, { status: 400, error: 'Event date is required' });
     }
 
     const trimmedName = content.name.trim();
     if (trimmedName.length === 0) {
-      return error(400, 'Event name cannot be empty');
+      return json(400, { status: 400, error: 'Event name cannot be empty' });
     }
 
     if (trimmedName.length > 200) {
-      return error(400, 'Event name exceeds maximum length of 200 characters');
+      return json(400, { status: 400, error: 'Event name exceeds maximum length of 200 characters' });
     }
 
     const trimmedDescription = content.description.trim();
     if (trimmedDescription.length === 0) {
-      return error(400, 'Event description cannot be empty');
+      return json(400, { status: 400, error: 'Event description cannot be empty' });
     }
 
     if (trimmedDescription.length > 5000) {
-      return error(400, 'Event description exceeds maximum length of 5000 characters');
+      return json(400, { status: 400, error: 'Event description exceeds maximum length of 5000 characters' });
     }
 
     // Validate image size if provided (max 10MB base64)
     if (content.imageBytes && content.imageBytes.length > 13333333) {
-      return error(400, 'Image size exceeds maximum of 10MB');
+      return json(400, { status: 400, error: 'Image size exceeds maximum of 10MB' });
     }
 
     let imageUrl = null;
@@ -225,7 +226,7 @@ eventsRouter.post('/events', withAuth, async (request: IRequest, env: Env) => {
       if (randomClub) {
         clubId = randomClub.id;
       } else {
-        return error(400, 'No clubs available to assign event to');
+        return json(400, { status: 400, error: 'No clubs available to assign event to' });
       }
     }
 
@@ -257,7 +258,7 @@ eventsRouter.post('/events', withAuth, async (request: IRequest, env: Env) => {
     `).bind(eventId).first();
 
     if (!newEvent) {
-      return error(500, 'Failed to create event');
+      return json(500, { status: 500, error: 'Failed to create event' });
     }
 
     return {
@@ -277,7 +278,7 @@ eventsRouter.post('/events', withAuth, async (request: IRequest, env: Env) => {
       updatedAt: newEvent.updated_at
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -292,7 +293,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     const event = await env.DB.prepare('SELECT author_id FROM events WHERE id = ?').bind(id).first();
 
     if (!event) {
-      return error(404, 'Event not found');
+      return json(404, { status: 404, error: 'Event not found' });
     }
 
     // Check if user is the author or a webmaster (admin)
@@ -300,7 +301,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     const isWebmaster = currentUser && currentUser.is_webmaster === 1;
 
     if (event.author_id !== user.sub && !isWebmaster) {
-      return error(403, 'You can only update your own events');
+      return json(403, { status: 403, error: 'You can only update your own events' });
     }
 
     // Build update query dynamically
@@ -309,10 +310,10 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
 
     if (content.name !== undefined) {
       if (content.name.trim().length === 0) {
-        return error(400, 'Event name cannot be empty');
+        return json(400, { status: 400, error: 'Event name cannot be empty' });
       }
       if (content.name.length > 200) {
-        return error(400, 'Event name exceeds maximum length of 200 characters');
+        return json(400, { status: 400, error: 'Event name exceeds maximum length of 200 characters' });
       }
       updates.push('name = ?');
       params.push(content.name);
@@ -320,10 +321,10 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
 
     if (content.description !== undefined) {
       if (content.description.trim().length === 0) {
-        return error(400, 'Event description cannot be empty');
+        return json(400, { status: 400, error: 'Event description cannot be empty' });
       }
       if (content.description.length > 5000) {
-        return error(400, 'Event description exceeds maximum length of 5000 characters');
+        return json(400, { status: 400, error: 'Event description exceeds maximum length of 5000 characters' });
       }
       updates.push('description = ?');
       params.push(content.description);
@@ -337,7 +338,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     // Handle Image Upload if provided
     if (content.imageBytes && content.imageBytes.length > 0) {
       if (content.imageBytes.length > 13333333) {
-        return error(400, 'Image size exceeds maximum of 10MB');
+        return json(400, { status: 400, error: 'Image size exceeds maximum of 10MB' });
       }
 
       try {
@@ -370,7 +371,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     }
 
     if (updates.length === 0) {
-      return error(400, 'No fields to update');
+      return json(400, { status: 400, error: 'No fields to update' });
     }
 
     updates.push('updated_at = ?');
@@ -389,7 +390,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
     `).bind(id).first();
 
     if (!updatedEvent) {
-      return error(500, 'Failed to fetch updated event');
+      return json(500, { status: 500, error: 'Failed to fetch updated event' });
     }
 
     // Check if user has RSVP'd
@@ -425,7 +426,7 @@ eventsRouter.put('/events/:id', withAuth, async (request: IRequest, env: Env) =>
       updatedAt: updatedEvent.updated_at
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -439,7 +440,7 @@ eventsRouter.delete('/events/:id', withAuth, async (request: IRequest, env: Env)
     const event = await env.DB.prepare('SELECT author_id FROM events WHERE id = ?').bind(id).first();
 
     if (!event) {
-      return error(404, 'Event not found');
+      return json(404, { status: 404, error: 'Event not found' });
     }
 
     // Check if user is the author or a webmaster (admin)
@@ -447,7 +448,7 @@ eventsRouter.delete('/events/:id', withAuth, async (request: IRequest, env: Env)
     const isWebmaster = currentUser && currentUser.is_webmaster === 1;
 
     if (event.author_id !== user.sub && !isWebmaster) {
-      return error(403, 'You can only delete your own events');
+      return json(403, { status: 403, error: 'You can only delete your own events' });
     }
 
     // Delete related data first (RSVPs)
@@ -458,7 +459,7 @@ eventsRouter.delete('/events/:id', withAuth, async (request: IRequest, env: Env)
 
     return { success: true, message: 'Event deleted successfully' };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -471,7 +472,7 @@ eventsRouter.post('/events/:id/rsvp', withAuth, async (request: IRequest, env: E
     // Check if event exists
     const event = await env.DB.prepare('SELECT id, rsvp_count FROM events WHERE id = ?').bind(id).first();
     if (!event) {
-      return error(404, 'Event not found');
+      return json(404, { status: 404, error: 'Event not found' });
     }
 
     // Check if user already RSVP'd
@@ -501,6 +502,6 @@ eventsRouter.post('/events/:id/rsvp', withAuth, async (request: IRequest, env: E
       hasRSVPd
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

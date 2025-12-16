@@ -1,7 +1,8 @@
-import { AutoRouter, error } from 'itty-router';
+import { Router } from 'itty-router';
+import { json } from '../utils/http';
 import { mapToClub, mapToPost } from '../models';
 
-export const searchRouter = AutoRouter();
+export const searchRouter = Router();
 
 // Public: Search Autocomplete
 searchRouter.get('/search/autocomplete', async (request, env) => {
@@ -29,7 +30,7 @@ searchRouter.get('/search/autocomplete', async (request, env) => {
       posts: posts.results.map((p: any) => ({ id: p.id, title: p.content.substring(0, 50) + '...' }))
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -52,7 +53,7 @@ searchRouter.get('/search/users', async (request, env) => {
       photoUrl: u.photo_url
     }));
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -61,7 +62,7 @@ searchRouter.get('/search', async (request, env) => {
   const { q } = request.query;
 
   if (!q || typeof q !== 'string') {
-    return error(400, 'Missing query parameter');
+    return json(400, { status: 400, error: 'Missing query parameter' });
   }
 
   const query = `%${q}%`;
@@ -148,6 +149,6 @@ searchRouter.get('/search', async (request, env) => {
       posts
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

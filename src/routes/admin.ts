@@ -1,9 +1,10 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { withAdminAuth, verifyAdminPassword } from '../middleware/auth';
 import { Env } from '../index';
 import { getPostCounts } from '../helpers';
 
-export const adminRouter = AutoRouter();
+export const adminRouter = Router();
 
 // Admin constants
 const ADMIN_API_KEY = 'leo-admin-secret-2024';
@@ -13,7 +14,7 @@ adminRouter.post('/admin/login', async (request: IRequest, env: Env) => {
   const body = await request.json() as { email: string; password: string };
 
   if (!body.email || !body.password) {
-    return error(400, 'Email and password required');
+    return json(400, { status: 400, error: 'Email and password required' });
   }
 
   const adminEmail = 'admin@leoconnect.com';
@@ -21,12 +22,12 @@ adminRouter.post('/admin/login', async (request: IRequest, env: Env) => {
   const adminPasswordHash = '909d7529e750eaacb1efca6dd50da55e197a4b1e0cf528e3d5c8e615c2167cab';
 
   if (body.email !== adminEmail) {
-    return error(401, 'Invalid credentials');
+    return json(401, { status: 401, error: 'Invalid credentials' });
   }
 
   const isValid = await verifyAdminPassword(body.password, adminPasswordHash);
   if (!isValid) {
-    return error(401, 'Invalid credentials');
+    return json(401, { status: 401, error: 'Invalid credentials' });
   }
 
   return {
@@ -55,7 +56,7 @@ adminRouter.get('/admin/stats', withAdminAuth, async (request, env) => {
       comments: commentsCount?.count || 0
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -92,7 +93,7 @@ adminRouter.get('/admin/users', withAdminAuth, async (request, env) => {
     const totalResult = await env.DB.prepare(countQuery).first();
     return { users: results, total: totalResult?.count || 0 };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -101,7 +102,7 @@ adminRouter.post('/admin/users', withAdminAuth, async (request: IRequest, env: E
   const body = await request.json() as any;
 
   if (!body.email || !body.display_name) {
-    return error(400, 'Email and display name are required');
+    return json(400, { status: 400, error: 'Email and display name are required' });
   }
 
   try {
@@ -119,7 +120,7 @@ adminRouter.post('/admin/users', withAdminAuth, async (request: IRequest, env: E
     const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(uid).first();
     return { success: true, user };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -172,7 +173,7 @@ adminRouter.put('/admin/users/:id', withAdminAuth, async (request: IRequest, env
     const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(id).first();
     return { success: true, user };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -183,7 +184,7 @@ adminRouter.delete('/admin/users/:id', withAdminAuth, async (request, env) => {
     await env.DB.prepare('DELETE FROM users WHERE uid = ?').bind(id).run();
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -220,7 +221,7 @@ adminRouter.get('/admin/clubs', withAdminAuth, async (request, env) => {
     const totalResult = await env.DB.prepare(countQuery).first();
     return { clubs: results, total: totalResult?.count || 0 };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -229,7 +230,7 @@ adminRouter.post('/admin/clubs', withAdminAuth, async (request: IRequest, env: E
   const body = await request.json() as any;
 
   if (!body.name || !body.district || !body.district_id) {
-    return error(400, 'Name, district, and district_id are required');
+    return json(400, { status: 400, error: 'Name, district, and district_id are required' });
   }
 
   try {
@@ -252,7 +253,7 @@ adminRouter.post('/admin/clubs', withAdminAuth, async (request: IRequest, env: E
     const club = await env.DB.prepare('SELECT * FROM clubs WHERE id = ?').bind(clubId).first();
     return { success: true, club };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -282,7 +283,7 @@ adminRouter.put('/admin/clubs/:id', withAdminAuth, async (request: IRequest, env
     const club = await env.DB.prepare('SELECT * FROM clubs WHERE id = ?').bind(id).first();
     return { success: true, club };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -298,7 +299,7 @@ adminRouter.delete('/admin/clubs/:id', withAdminAuth, async (request: IRequest, 
     }
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -318,7 +319,7 @@ adminRouter.get('/admin/districts', withAdminAuth, async (request, env) => {
 
     return { districts: districtsWithCounts, total: districts.length };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -327,7 +328,7 @@ adminRouter.post('/admin/districts', withAdminAuth, async (request: IRequest, en
   const body = await request.json() as any;
 
   if (!body.name) {
-    return error(400, 'District name is required');
+    return json(400, { status: 400, error: 'District name is required' });
   }
 
   try {
@@ -336,7 +337,7 @@ adminRouter.post('/admin/districts', withAdminAuth, async (request: IRequest, en
     const district = await env.DB.prepare('SELECT * FROM districts WHERE name = ?').bind(body.name).first();
     return { success: true, district };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -348,7 +349,7 @@ adminRouter.delete('/admin/districts/:name', withAdminAuth, async (request: IReq
     await env.DB.prepare('DELETE FROM districts WHERE name = ?').bind(name).run();
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -400,7 +401,7 @@ adminRouter.get('/admin/posts', withAdminAuth, async (request, env) => {
     const totalResult = await env.DB.prepare(countQuery).first();
     return { posts: postsWithCounts, total: totalResult?.count || 0 };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -413,7 +414,7 @@ adminRouter.delete('/admin/posts/:id', withAdminAuth, async (request, env) => {
     await env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -437,6 +438,6 @@ adminRouter.get('/admin/messages', withAdminAuth, async (request, env) => {
     const totalResult = await env.DB.prepare('SELECT COUNT(*) as count FROM messages').first();
     return { messages: results, total: totalResult?.count || 0 };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

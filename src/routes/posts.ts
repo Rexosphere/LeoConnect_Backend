@@ -1,4 +1,5 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 import {
@@ -13,7 +14,7 @@ import {
   notifyNewPostFromFollowing
 } from '../notifications';
 
-export const postsRouter = AutoRouter();
+export const postsRouter = Router();
 
 // Protected: Get Home Feed (Posts from followed users and clubs)
 postsRouter.get('/feed', withAuth, async (request, env) => {
@@ -79,7 +80,7 @@ postsRouter.get('/feed', withAuth, async (request, env) => {
 
     return posts;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -142,7 +143,7 @@ postsRouter.get('/explore', withAuth, async (request, env) => {
 
     return posts;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -155,21 +156,21 @@ postsRouter.post('/posts', withAuth, async (request, env) => {
     // Check if user is verified
     const currentUser = await env.DB.prepare('SELECT is_verified FROM users WHERE uid = ?').bind(user.sub).first();
     if (!currentUser || currentUser.is_verified !== 1) {
-      return error(403, 'You must verify your Leo ID before creating posts');
+      return json(403, { status: 403, error: 'You must verify your Leo ID before creating posts' });
     }
 
     // Input validation
     if (!content.content || typeof content.content !== 'string') {
-      return error(400, 'Post content is required');
+      return json(400, { status: 400, error: 'Post content is required' });
     }
 
     const trimmedContent = content.content.trim();
     if (trimmedContent.length === 0) {
-      return error(400, 'Post content cannot be empty');
+      return json(400, { status: 400, error: 'Post content cannot be empty' });
     }
 
     if (trimmedContent.length > 5000) {
-      return error(400, 'Post content exceeds maximum length of 5000 characters');
+      return json(400, { status: 400, error: 'Post content exceeds maximum length of 5000 characters' });
     }
 
     // Handle multiple images (up to 4)
@@ -177,13 +178,13 @@ postsRouter.post('/posts', withAuth, async (request, env) => {
 
     // Validate number of images
     if (imagesList.length > 4) {
-      return error(400, 'Maximum of 4 images allowed per post');
+      return json(400, { status: 400, error: 'Maximum of 4 images allowed per post' });
     }
 
     // Validate each image size (max 10MB base64 each)
     for (const img of imagesList) {
       if (img.imageBytes && img.imageBytes.length > 13333333) {
-        return error(400, 'Each image size must not exceed 10MB');
+        return json(400, { status: 400, error: 'Each image size must not exceed 10MB' });
       }
     }
 
@@ -244,7 +245,7 @@ postsRouter.post('/posts', withAuth, async (request, env) => {
         clubId = randomClub.id;
       } else {
         // Fallback if no clubs exist (shouldn't happen in real app but good for safety)
-        return error(400, 'No clubs available to assign post to');
+        return json(400, { status: 400, error: 'No clubs available to assign post to' });
       }
     }
 
@@ -299,7 +300,7 @@ postsRouter.post('/posts', withAuth, async (request, env) => {
 
     // Map manually since we know structure
     if (!newPost) {
-      return error(500, 'Failed to create post');
+      return json(500, { status: 500, error: 'Failed to create post' });
     }
 
     return {
@@ -321,7 +322,7 @@ postsRouter.post('/posts', withAuth, async (request, env) => {
       updatedAt: newPost.updated_at
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -335,7 +336,7 @@ postsRouter.post('/posts/:id/like', withAuth, async (request, env) => {
     // Check if post exists
     const post = await env.DB.prepare('SELECT id FROM posts WHERE id = ?').bind(id).first();
     if (!post) {
-      return error(404, 'Post not found');
+      return json(404, { status: 404, error: 'Post not found' });
     }
 
     // Check if user already liked the post
@@ -363,7 +364,7 @@ postsRouter.post('/posts/:id/like', withAuth, async (request, env) => {
     };
 
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -380,7 +381,7 @@ postsRouter.get('/posts/:id', withAuth, async (request, env) => {
         LEFT JOIN clubs c ON p.club_id = c.id
         WHERE p.id = ?
     `).bind(id).first();
-    if (!post) return error(404, 'Post not found');
+    if (!post) return json(404, { status: 404, error: 'Post not found' });
 
     // Fetch club details
     let club = null;
@@ -461,7 +462,7 @@ postsRouter.get('/posts/:id', withAuth, async (request, env) => {
       isFollowingClub
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -474,7 +475,7 @@ postsRouter.post('/posts/:id/share', withAuth, async (request, env) => {
     // Check if post exists
     const post = await env.DB.prepare('SELECT id, shares_count FROM posts WHERE id = ?').bind(id).first();
     if (!post) {
-      return error(404, 'Post not found');
+      return json(404, { status: 404, error: 'Post not found' });
     }
 
     // Check if already shared by this user
@@ -509,7 +510,7 @@ postsRouter.post('/posts/:id/share', withAuth, async (request, env) => {
       alreadyShared: false
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -524,7 +525,7 @@ postsRouter.put('/posts/:id', withAuth, async (request, env) => {
     const post = await env.DB.prepare('SELECT author_id FROM posts WHERE id = ?').bind(id).first();
 
     if (!post) {
-      return error(404, 'Post not found');
+      return json(404, { status: 404, error: 'Post not found' });
     }
 
     // Check if user is the author or a webmaster (admin)
@@ -532,21 +533,21 @@ postsRouter.put('/posts/:id', withAuth, async (request, env) => {
     const isWebmaster = currentUser && currentUser.is_webmaster === 1;
 
     if (post.author_id !== user.sub && !isWebmaster) {
-      return error(403, 'You can only edit your own posts');
+      return json(403, { status: 403, error: 'You can only edit your own posts' });
     }
 
     // Validate content
     if (!body.content || typeof body.content !== 'string') {
-      return error(400, 'Post content is required');
+      return json(400, { status: 400, error: 'Post content is required' });
     }
 
     const trimmedContent = body.content.trim();
     if (trimmedContent.length === 0) {
-      return error(400, 'Post content cannot be empty');
+      return json(400, { status: 400, error: 'Post content cannot be empty' });
     }
 
     if (trimmedContent.length > 5000) {
-      return error(400, 'Post content exceeds maximum length of 5000 characters');
+      return json(400, { status: 400, error: 'Post content exceeds maximum length of 5000 characters' });
     }
 
     // Update the post
@@ -565,7 +566,7 @@ postsRouter.put('/posts/:id', withAuth, async (request, env) => {
     `).bind(id).first();
 
     if (!updatedPost) {
-      return error(500, 'Failed to retrieve updated post');
+      return json(500, { status: 500, error: 'Failed to retrieve updated post' });
     }
 
     // Check if liked by user
@@ -591,7 +592,7 @@ postsRouter.put('/posts/:id', withAuth, async (request, env) => {
       updatedAt: updatedPost.updated_at
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -605,7 +606,7 @@ postsRouter.delete('/posts/:id', withAuth, async (request, env) => {
     const post = await env.DB.prepare('SELECT author_id FROM posts WHERE id = ?').bind(id).first();
 
     if (!post) {
-      return error(404, 'Post not found');
+      return json(404, { status: 404, error: 'Post not found' });
     }
 
     // Check if user is the author or a webmaster (admin)
@@ -613,7 +614,7 @@ postsRouter.delete('/posts/:id', withAuth, async (request, env) => {
     const isWebmaster = currentUser && currentUser.is_webmaster === 1;
 
     if (post.author_id !== user.sub && !isWebmaster) {
-      return error(403, 'You can only delete your own posts');
+      return json(403, { status: 403, error: 'You can only delete your own posts' });
     }
 
     // Delete related data first (comments, likes, images)
@@ -626,6 +627,6 @@ postsRouter.delete('/posts/:id', withAuth, async (request, env) => {
 
     return { success: true, message: 'Post deleted successfully' };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

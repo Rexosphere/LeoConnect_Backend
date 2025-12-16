@@ -1,10 +1,11 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 import { mapToClub, mapToPost } from '../models';
 import { getClubCounts, isUserFollowingUser } from '../helpers';
 
-export const clubsRouter = AutoRouter();
+export const clubsRouter = Router();
 
 // Public: Get Districts
 clubsRouter.get('/districts', async (request: IRequest, env: Env) => {
@@ -12,7 +13,7 @@ clubsRouter.get('/districts', async (request: IRequest, env: Env) => {
     const { results } = await env.DB.prepare('SELECT name FROM districts ORDER BY name').all();
     return results.map((d: any) => d.name);
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -52,7 +53,7 @@ clubsRouter.get('/clubs', async (request: IRequest, env: Env) => {
       }
     }, c.id));
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -112,7 +113,7 @@ clubsRouter.get('/clubs/:id/posts', async (request: IRequest, env: Env) => {
 
     return posts;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -125,7 +126,7 @@ clubsRouter.post('/clubs/:id/follow', withAuth, async (request: IRequest, env: E
     // Check if club exists
     const club = await env.DB.prepare('SELECT id FROM clubs WHERE id = ?').bind(id).first();
     if (!club) {
-      return error(404, 'Club not found');
+      return json(404, { status: 404, error: 'Club not found' });
     }
 
     // Check if already following
@@ -134,7 +135,7 @@ clubsRouter.post('/clubs/:id/follow', withAuth, async (request: IRequest, env: E
     ).bind(user.sub, id).first();
 
     if (existing) {
-      return error(400, 'Already following this club');
+      return json(400, { status: 400, error: 'Already following this club' });
     }
 
     // Create follow relationship
@@ -150,7 +151,7 @@ clubsRouter.post('/clubs/:id/follow', withAuth, async (request: IRequest, env: E
       followersCount: counts.followersCount
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -167,7 +168,7 @@ clubsRouter.get('/clubs/:id/followers', withAuth, async (request: IRequest, env:
     // Check if club exists
     const club = await env.DB.prepare('SELECT id FROM clubs WHERE id = ?').bind(id).first();
     if (!club) {
-      return error(404, 'Club not found');
+      return json(404, { status: 404, error: 'Club not found' });
     }
 
     // Get total count
@@ -207,7 +208,7 @@ clubsRouter.get('/clubs/:id/followers', withAuth, async (request: IRequest, env:
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -224,7 +225,7 @@ clubsRouter.get('/clubs/:id/members', withAuth, async (request: IRequest, env: E
     // Check if club exists
     const club = await env.DB.prepare('SELECT id FROM clubs WHERE id = ?').bind(id).first();
     if (!club) {
-      return error(404, 'Club not found');
+      return json(404, { status: 404, error: 'Club not found' });
     }
 
     // Get total count
@@ -263,6 +264,6 @@ clubsRouter.get('/clubs/:id/members', withAuth, async (request: IRequest, env: E
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

@@ -1,4 +1,5 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { verifyFirebaseToken } from '../auth';
 
 // Define Env interface for Cloudflare Bindings
@@ -14,12 +15,12 @@ export interface Env {
 const withAuth = async (request: IRequest, env: Env) => {
   const user = await verifyFirebaseToken(request, env);
   if (!user) {
-    return error(401, 'Unauthorized');
+    return json(401, { status: 401, error: 'Unauthorized' });
   }
   request.user = user;
 };
 
-export const notificationsRouter = AutoRouter();
+export const notificationsRouter = Router();
 
 // Protected: Register FCM Token
 notificationsRouter.post('/notifications/token', withAuth, async (request, env) => {
@@ -27,7 +28,7 @@ notificationsRouter.post('/notifications/token', withAuth, async (request, env) 
   const body = await request.json() as any;
 
   if (!body.token) {
-    return error(400, 'FCM token is required');
+    return json(400, { status: 400, error: 'FCM token is required' });
   }
 
   try {
@@ -52,7 +53,7 @@ notificationsRouter.post('/notifications/token', withAuth, async (request, env) 
 
     return { success: true, message: 'FCM token registered' };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -62,7 +63,7 @@ notificationsRouter.delete('/notifications/token', withAuth, async (request, env
   const body = await request.json() as any;
 
   if (!body.token) {
-    return error(400, 'FCM token is required');
+    return json(400, { status: 400, error: 'FCM token is required' });
   }
 
   try {
@@ -72,7 +73,7 @@ notificationsRouter.delete('/notifications/token', withAuth, async (request, env
 
     return { success: true, message: 'FCM token removed' };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -125,7 +126,7 @@ notificationsRouter.get('/notifications', withAuth, async (request, env) => {
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -140,11 +141,11 @@ notificationsRouter.patch('/notifications/:id/read', withAuth, async (request, e
     ).bind(id).first();
 
     if (!notification) {
-      return error(404, 'Notification not found');
+      return json(404, { status: 404, error: 'Notification not found' });
     }
 
     if (notification.user_id !== user.sub) {
-      return error(403, 'Not your notification');
+      return json(403, { status: 403, error: 'Not your notification' });
     }
 
     await env.DB.prepare(
@@ -153,7 +154,7 @@ notificationsRouter.patch('/notifications/:id/read', withAuth, async (request, e
 
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -168,7 +169,7 @@ notificationsRouter.post('/notifications/read-all', withAuth, async (request, en
 
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -194,7 +195,7 @@ notificationsRouter.get('/notifications/preferences', withAuth, async (request, 
       ).bind(user.sub).first();
 
       if (!prefs) {
-        return error(500, 'Failed to create notification preferences');
+        return json(500, { status: 500, error: 'Failed to create notification preferences' });
       }
     }
 
@@ -209,7 +210,7 @@ notificationsRouter.get('/notifications/preferences', withAuth, async (request, 
       commentsEnabled: preferences.comments_enabled === 1,
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -244,7 +245,7 @@ notificationsRouter.patch('/notifications/preferences', withAuth, async (request
     }
 
     if (updates.length === 0) {
-      return error(400, 'No preferences to update');
+      return json(400, { status: 400, error: 'No preferences to update' });
     }
 
     updates.push('updated_at = ?');
@@ -259,6 +260,6 @@ notificationsRouter.patch('/notifications/preferences', withAuth, async (request
 
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

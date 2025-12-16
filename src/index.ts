@@ -1,4 +1,5 @@
-import { AutoRouter, cors } from 'itty-router';
+import { Router, cors } from 'itty-router';
+import { json } from './utils/http';
 
 // Import route modules
 import { authRouter } from './routes/auth';
@@ -23,26 +24,47 @@ export interface Env {
 
 const { preflight, corsify } = cors();
 
-// Create main router
-const router = AutoRouter({
-  before: [preflight],
-  finally: [corsify],
-});
+// Create basic router (not AutoRouter to avoid broken error() function)
+const router = Router();
 
 // Health check
 router.get('/', () => ({ message: 'LeoConnect Backend is running with D1!' }));
 
 // Mount all route modules
-router.all('*', authRouter);
-router.all('*', usersRouter);
-router.all('*', clubsRouter);
-router.all('*', postsRouter);
-router.all('*', commentsRouter);
-router.all('*', messagesRouter);
-router.all('*', notificationsRouter);
-router.all('*', searchRouter);
-router.all('*', eventsRouter);
-router.all('*', adminRouter);
+router.all('*', authRouter.fetch);
+router.all('*', usersRouter.fetch);
+router.all('*', clubsRouter.fetch);
+router.all('*', postsRouter.fetch);
+router.all('*', commentsRouter.fetch);
+router.all('*', messagesRouter.fetch);
+router.all('*', notificationsRouter.fetch);
+router.all('*', searchRouter.fetch);
+router.all('*', eventsRouter.fetch);
+router.all('*', adminRouter.fetch);
 
-// Export router as default Cloudflare Worker handler
-export default router;
+// 404 handler
+router.all('*', () => json(404, { status: 404, error: 'Not Found' }));
+
+// Export custom worker handler with manual error handling
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      // Handle CORS preflight
+      if (request.method === 'OPTIONS') {
+        return corsify(new Response(null, { status: 204 }));
+      }
+
+      const response = await router.fetch(request, env, ctx);
+
+      // Convert plain objects to JSON responses
+      if (response && !(response instanceof Response)) {
+        return corsify(json(200, response));
+      }
+
+      return corsify(response || json(404, { status: 404, error: 'Not Found' }));
+    } catch (e: any) {
+      console.error('Error:', e);
+      return corsify(json(500, { status: 500, error: e?.message ?? String(e) }));
+    }
+  }
+};

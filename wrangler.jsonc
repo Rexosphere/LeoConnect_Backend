@@ -10,49 +10,11 @@
 	"observability": {
 		"enabled": true
 	},
-	/**
-	 * Smart Placement
-	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": { "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 */
-	// "vars": { "MY_VARIABLE": "production_value" }
-	/**
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 */
-	/**
-	 * Static Assets
-	 * https://developers.cloudflare.com/workers/static-assets/binding/
-	 */
-	// "assets": { "directory": "./public/", "binding": "ASSETS" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }],
-	"routes": [
-		{
-			"pattern": "leoconnect.rexosphere.com",
-			"zone_name": "rexosphere.com",
-			"custom_domain": true
-		}
-	],
 	"d1_databases": [
-  {
-    "binding": "DB",
-    "database_name": "leoconnect-db",
-    "database_id": "61fd94c1-8860-49e3-afb8-8dff944f53a6"
-  }
-]
-
+		{
+			"binding": "DB",
+			"database_name": "leoconnect-db",
+			"database_id": "783800cd-d994-4111-a7d0-785ccf53aaaf"
+		}
+	]
 }

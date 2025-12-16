@@ -1,4 +1,5 @@
-import { IRequest, error } from 'itty-router';
+import { IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { verifyFirebaseToken } from '../auth';
 import { Env } from '../index';
 
@@ -6,7 +7,7 @@ import { Env } from '../index';
 export const withAuth = async (request: IRequest, env: Env) => {
   const user = await verifyFirebaseToken(request, env);
   if (!user) {
-    return error(401, 'Unauthorized');
+    return json(401, { status: 401, error: 'Unauthorized' });
   }
   request.user = user;
 };
@@ -17,7 +18,7 @@ const ADMIN_API_KEY = 'leo-admin-secret-2024';
 export const withAdminAuth = (request: IRequest, env: Env) => {
   const apiKey = request.headers.get('X-Admin-Key');
   if (apiKey !== ADMIN_API_KEY) {
-    return error(401, 'Invalid admin key');
+    return json(401, { status: 401, error: 'Invalid admin key' });
   }
 };
 

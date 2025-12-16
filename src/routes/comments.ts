@@ -1,8 +1,9 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 
-export const commentsRouter = AutoRouter();
+export const commentsRouter = Router();
 
 // Protected: Get Comments for Post
 commentsRouter.get('/posts/:id/comments', withAuth, async (request, env) => {
@@ -44,7 +45,7 @@ commentsRouter.get('/posts/:id/comments', withAuth, async (request, env) => {
       hasMore: false
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -55,11 +56,11 @@ commentsRouter.post('/posts/:id/comments', withAuth, async (request, env) => {
   const user = request.user;
 
   if (!content.content || content.content.trim() === "") {
-    return error(400, "Comment content cannot be empty");
+    return json(400, { status: 400, error: "Comment content cannot be empty" });
   }
 
   if (content.content.length > 2000) {
-    return error(400, "Comment exceeds maximum length of 2000 characters");
+    return json(400, { status: 400, error: "Comment exceeds maximum length of 2000 characters" });
   }
 
   try {
@@ -85,7 +86,7 @@ commentsRouter.post('/posts/:id/comments', withAuth, async (request, env) => {
       }
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -96,18 +97,18 @@ commentsRouter.delete('/comments/:id', withAuth, async (request, env) => {
 
   try {
     const comment = await env.DB.prepare('SELECT * FROM comments WHERE id = ?').bind(id).first();
-    if (!comment) return error(404, 'Comment not found');
+    if (!comment) return json(404, { status: 404, error: 'Comment not found' });
 
     // Check ownership
     if (comment.user_id !== user.sub) {
-      return error(403, 'You can only delete your own comments');
+      return json(403, { status: 403, error: 'You can only delete your own comments' });
     }
 
     await env.DB.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
 
     return { success: true };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -120,7 +121,7 @@ commentsRouter.post('/comments/:id/like', withAuth, async (request, env) => {
     // Check if comment exists
     const comment = await env.DB.prepare('SELECT id, likes_count FROM comments WHERE id = ?').bind(id).first();
     if (!comment) {
-      return error(404, 'Comment not found');
+      return json(404, { status: 404, error: 'Comment not found' });
     }
 
     // Check if already liked
@@ -151,6 +152,6 @@ commentsRouter.post('/comments/:id/like', withAuth, async (request, env) => {
       likesCount: newLikesCount
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });

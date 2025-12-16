@@ -1,23 +1,24 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { verifyFirebaseToken } from '../auth';
 import { getUserCounts } from '../helpers';
 import { mapToUserProfile } from '../models';
 import { verifyAdminPassword } from '../middleware/auth';
 
-export const authRouter = AutoRouter();
+export const authRouter = Router();
 
 const ADMIN_API_KEY = 'leo-admin-secret-2024';
 
 // Public: Auth with Google/Firebase
 authRouter.post('/auth/google', async (request: IRequest, env: Env) => {
   const token = request.headers.get('Authorization')?.split(' ')[1];
-  if (!token) return error(400, 'Missing token');
+  if (!token) return json(400, { status: 400, error: 'Missing token' });
 
   const payload = await verifyFirebaseToken(request, env);
 
   if (!payload || !payload.sub) {
-    return error(401, 'Invalid token');
+    return json(401, { status: 401, error: 'Invalid token' });
   }
 
   const uid = payload.sub;
@@ -69,7 +70,7 @@ authRouter.post('/admin/login', async (request: IRequest, env: Env) => {
   const body = await request.json() as { email: string; password: string };
 
   if (!body.email || !body.password) {
-    return error(400, 'Email and password required');
+    return json(400, { status: 400, error: 'Email and password required' });
   }
 
   const adminEmail = 'admin@leoconnect.com';
@@ -77,12 +78,12 @@ authRouter.post('/admin/login', async (request: IRequest, env: Env) => {
   const adminPasswordHash = '909d7529e750eaacb1efca6dd50da55e197a4b1e0cf528e3d5c8e615c2167cab';
 
   if (body.email !== adminEmail) {
-    return error(401, 'Invalid credentials');
+    return json(401, { status: 401, error: 'Invalid credentials' });
   }
 
   const isValid = await verifyAdminPassword(body.password, adminPasswordHash);
   if (!isValid) {
-    return error(401, 'Invalid credentials');
+    return json(401, { status: 401, error: 'Invalid credentials' });
   }
 
   return {

@@ -23,6 +23,14 @@ DROP TABLE IF EXISTS clubs;
 DROP TABLE IF EXISTS districts;
 DROP TABLE IF EXISTS users;
 
+CREATE TABLE IF NOT EXISTS districts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  total_clubs INTEGER DEFAULT 0,
+  total_members INTEGER DEFAULT 0
+);
+
+
 -- ============================================
 -- DISTRICTS (12 Districts - 2025 Structure)
 -- ============================================

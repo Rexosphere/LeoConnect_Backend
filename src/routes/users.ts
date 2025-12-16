@@ -1,4 +1,5 @@
-import { AutoRouter, IRequest, error } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
+import { json } from '../utils/http';
 import { Env } from '../index';
 import { withAuth } from '../middleware/auth';
 import {
@@ -15,7 +16,7 @@ import {
 } from '../helpers';
 import { notifyNewFollow } from '../notifications';
 
-export const usersRouter = AutoRouter();
+export const usersRouter = Router();
 
 // Protected: Complete Quick Start (First-time user onboarding)
 usersRouter.post('/users/me/quick-start', withAuth, async (request, env) => {
@@ -27,7 +28,7 @@ usersRouter.post('/users/me/quick-start', withAuth, async (request, env) => {
     if (body.assignedClubId) {
       const club = await env.DB.prepare('SELECT id FROM clubs WHERE id = ?').bind(body.assignedClubId).first();
       if (!club) {
-        return error(400, 'Invalid club ID');
+        return json(400, { status: 400, error: 'Invalid club ID' });
       }
     }
 
@@ -59,7 +60,7 @@ usersRouter.post('/users/me/quick-start', withAuth, async (request, env) => {
     // Return updated profile
     const updatedUser = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(user.sub).first();
     if (!updatedUser) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     const followingClubsResult = await env.DB.prepare('SELECT club_id FROM user_following_clubs WHERE user_id = ?').bind(user.sub).all();
@@ -83,7 +84,7 @@ usersRouter.post('/users/me/quick-start', withAuth, async (request, env) => {
 
     return mapToUserProfile(userData, user.sub);
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -97,7 +98,7 @@ usersRouter.get('/users/me', withAuth, async (request, env) => {
   try {
     const userDoc = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(targetUid).first();
     if (!userDoc) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     const followingClubsResult = await env.DB.prepare('SELECT club_id FROM user_following_clubs WHERE user_id = ?').bind(targetUid).all();
@@ -123,7 +124,7 @@ usersRouter.get('/users/me', withAuth, async (request, env) => {
 
     return mapToUserProfile(userData, targetUid);
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -150,7 +151,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
 
         // Validate image size (max 5MB for profile photos)
         if (imageBuffer.length > 5 * 1024 * 1024) {
-          return error(400, 'Profile photo must be less than 5MB');
+          return json(400, { status: 400, error: 'Profile photo must be less than 5MB' });
         }
 
         // Upload to Discord
@@ -164,7 +165,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
         });
 
         if (!discordResponse.ok) {
-          return error(500, 'Failed to upload profile photo');
+          return json(500, { status: 500, error: 'Failed to upload profile photo' });
         }
 
         const discordData: any = await discordResponse.json();
@@ -174,7 +175,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
         params.push(photoUrl);
       } catch (uploadError: any) {
         console.error('Photo upload error:', uploadError);
-        return error(500, 'Failed to process profile photo');
+        return json(500, { status: 500, error: 'Failed to process profile photo' });
       }
     }
 
@@ -192,7 +193,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
     }
 
     if (updates.length === 0) {
-      return error(400, 'No valid fields to update');
+      return json(400, { status: 400, error: 'No valid fields to update' });
     }
 
     params.push(user.sub); // For WHERE clause
@@ -202,7 +203,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
     // Return updated profile
     const updatedUser = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(user.sub).first();
     if (!updatedUser) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Fetch following clubs (unchanged)
@@ -229,7 +230,7 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
 
     return mapToUserProfile(userData, user.sub);
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -241,7 +242,7 @@ usersRouter.get('/users/:id', withAuth, async (request, env) => {
   try {
     const user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(id).first();
     if (!user) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Fetch following clubs
@@ -278,7 +279,7 @@ usersRouter.get('/users/:id', withAuth, async (request, env) => {
 
     return userProfile;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -338,7 +339,7 @@ usersRouter.get('/users/:id/posts', async (request, env) => {
 
     return posts;
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -348,14 +349,14 @@ usersRouter.post('/users/:id/follow', withAuth, async (request, env) => {
   const user = request.user;
 
   if (id === user.sub) {
-    return error(400, 'Cannot follow yourself');
+    return json(400, { status: 400, error: 'Cannot follow yourself' });
   }
 
   try {
     // Check if target user exists
     const targetUser = await env.DB.prepare('SELECT uid FROM users WHERE uid = ?').bind(id).first();
     if (!targetUser) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Check if already following
@@ -364,7 +365,7 @@ usersRouter.post('/users/:id/follow', withAuth, async (request, env) => {
     ).bind(user.sub, id).first();
 
     if (existing) {
-      return error(400, 'Already following this user');
+      return json(400, { status: 400, error: 'Already following this user' });
     }
 
     // Create follow relationship
@@ -386,7 +387,7 @@ usersRouter.post('/users/:id/follow', withAuth, async (request, env) => {
       followersCount: counts.followersCount
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -403,7 +404,7 @@ usersRouter.delete('/users/:id/follow', withAuth, async (request, env) => {
     ).bind(user.sub, id).run();
 
     if (result.meta.changes === 0) {
-      return error(404, 'Not following this user');
+      return json(404, { status: 404, error: 'Not following this user' });
     }
 
     // Get updated counts
@@ -414,7 +415,7 @@ usersRouter.delete('/users/:id/follow', withAuth, async (request, env) => {
       followersCount: counts.followersCount
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -431,7 +432,7 @@ usersRouter.get('/users/:id/followers', withAuth, async (request, env) => {
     // Check if user exists
     const user = await env.DB.prepare('SELECT uid FROM users WHERE uid = ?').bind(id).first();
     if (!user) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Get total count
@@ -471,7 +472,7 @@ usersRouter.get('/users/:id/followers', withAuth, async (request, env) => {
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -488,7 +489,7 @@ usersRouter.get('/users/:id/following', withAuth, async (request, env) => {
     // Check if user exists
     const user = await env.DB.prepare('SELECT uid FROM users WHERE uid = ?').bind(id).first();
     if (!user) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Get total count
@@ -528,7 +529,7 @@ usersRouter.get('/users/:id/following', withAuth, async (request, env) => {
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
 
@@ -545,7 +546,7 @@ usersRouter.get('/users/:id/following-clubs', withAuth, async (request, env) => 
     // Check if user exists
     const user = await env.DB.prepare('SELECT uid FROM users WHERE uid = ?').bind(id).first();
     if (!user) {
-      return error(404, 'User not found');
+      return json(404, { status: 404, error: 'User not found' });
     }
 
     // Get total count
@@ -597,6 +598,6 @@ usersRouter.get('/users/:id/following-clubs', withAuth, async (request, env) => 
       hasMore: offsetNum + limitNum < total
     };
   } catch (e: any) {
-    return error(500, e.message);
+    return json(500, { status: 500, error: e?.message ?? String(e) });
   }
 });
