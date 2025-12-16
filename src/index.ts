@@ -22,7 +22,11 @@ export interface Env {
   DB: D1Database;
 }
 
-const { preflight, corsify } = cors();
+const { preflight, corsify } = cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'],
+});
 
 // Create basic router (not AutoRouter to avoid broken error() function)
 const router = Router();
@@ -49,9 +53,17 @@ router.all('*', () => json(404, { status: 404, error: 'Not Found' }));
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      // Handle CORS preflight
+      // Handle CORS preflight with full headers
       if (request.method === 'OPTIONS') {
-        return corsify(new Response(null, { status: 204 }));
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Key',
+            'Access-Control-Max-Age': '86400',
+          }
+        });
       }
 
       const response = await router.fetch(request, env, ctx);
