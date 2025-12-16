@@ -48,11 +48,11 @@
 		}
 	],
 	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "leoconnect-db",
-			"database_id": "b85c0061-597d-44e2-9ff7-2e57f5b52aa6",
-			"remote": true
-		}
-	]
+  {
+    "binding": "DB",
+    "database_name": "leoconnect-db",
+    "database_id": "61fd94c1-8860-49e3-afb8-8dff944f53a6"
+  }
+]
+
 }
