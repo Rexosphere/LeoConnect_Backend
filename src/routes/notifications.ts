@@ -1,6 +1,6 @@
 import { Router, IRequest } from 'itty-router';
 import { json } from '../utils/http';
-import { verifyFirebaseToken } from '../auth';
+import { withAuth } from '../middleware/auth';
 
 // Define Env interface for Cloudflare Bindings
 export interface Env {
@@ -10,15 +10,6 @@ export interface Env {
   DISCORD_WEBHOOK_URL: string;
   DB: D1Database;
 }
-
-// Middleware to authenticate requests
-const withAuth = async (request: IRequest, env: Env) => {
-  const user = await verifyFirebaseToken(request, env);
-  if (!user) {
-    return json(401, { status: 401, error: 'Unauthorized' });
-  }
-  request.user = user;
-};
 
 export const notificationsRouter = Router();
 
