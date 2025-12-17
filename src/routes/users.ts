@@ -79,6 +79,7 @@ usersRouter.post('/users/me/quick-start', withAuth, async (request, env) => {
       assignedClubId: updatedUser.assigned_club_id,
       followingClubs: followingClubs,
       onboardingCompleted: updatedUser.onboarding_completed === 1,
+      publicKey: updatedUser.public_key,
       ...counts
     };
 
@@ -119,6 +120,7 @@ usersRouter.get('/users/me', withAuth, async (request, env) => {
       assignedClubId: userDoc.assigned_club_id,
       followingClubs: followingClubs,
       onboardingCompleted: userDoc.onboarding_completed === 1,
+      publicKey: userDoc.public_key,
       ...counts
     };
 
@@ -225,6 +227,70 @@ usersRouter.patch('/users/me', withAuth, async (request, env) => {
       assignedClubId: updatedUser.assigned_club_id,
       followingClubs: followingClubs,
       onboardingCompleted: updatedUser.onboarding_completed === 1,
+      publicKey: updatedUser.public_key,
+      ...counts
+    };
+
+    return mapToUserProfile(userData, user.sub);
+  } catch (e: any) {
+    return json(500, { status: 500, error: e?.message ?? String(e) });
+  }
+});
+
+// Protected: Update User's Public Key for E2E Encryption
+usersRouter.put('/users/me/public-key', withAuth, async (request, env) => {
+  const user = request.user;
+  const body = await request.json() as any;
+
+  try {
+    if (!body.publicKey || typeof body.publicKey !== 'string') {
+      return json(400, { status: 400, error: 'Public key is required' });
+    }
+
+    // Validate public key format (basic check for PEM format)
+    if (!body.publicKey.includes('BEGIN PUBLIC KEY') || !body.publicKey.includes('END PUBLIC KEY')) {
+      return json(400, { status: 400, error: 'Invalid public key format. Expected PEM format.' });
+    }
+
+    // Check if user already has a public key
+    const existingUser = await env.DB.prepare('SELECT public_key FROM users WHERE uid = ?').bind(user.sub).first();
+    if (existingUser && existingUser.public_key && !body.force) {
+      return json(409, {
+        status: 409,
+        error: 'Public key already exists',
+        message: 'A public key already exists for this user. Set force=true to overwrite.',
+        hasExistingKey: true
+      });
+    }
+
+    // Update public key
+    await env.DB.prepare('UPDATE users SET public_key = ? WHERE uid = ?')
+      .bind(body.publicKey, user.sub)
+      .run();
+
+    // Return updated profile
+    const updatedUser = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(user.sub).first();
+    if (!updatedUser) {
+      return json(404, { status: 404, error: 'User not found' });
+    }
+
+    const followingClubsResult = await env.DB.prepare('SELECT club_id FROM user_following_clubs WHERE user_id = ?').bind(user.sub).all();
+    const followingClubs = followingClubsResult.results.map((r: any) => r.club_id);
+    const counts = await getUserCounts(env.DB, user.sub);
+
+    const userData = {
+      uid: updatedUser.uid,
+      email: updatedUser.email,
+      displayName: updatedUser.display_name,
+      photoURL: updatedUser.photo_url,
+      leoId: updatedUser.leo_id,
+      bio: updatedUser.bio,
+      isWebmaster: updatedUser.is_webmaster === 1,
+      isVerified: updatedUser.is_verified === 1,
+      assignedClubId: updatedUser.assigned_club_id,
+      followingClubs: followingClubs,
+      onboardingCompleted: updatedUser.onboarding_completed === 1,
+      publicKey: updatedUser.public_key,
       ...counts
     };
 
@@ -270,6 +336,7 @@ usersRouter.get('/users/:id', withAuth, async (request, env) => {
       assignedClubId: user.assigned_club_id,
       followingClubs: followingClubs,
       onboardingCompleted: user.onboarding_completed === 1,
+      publicKey: user.public_key,
       ...counts
     };
 

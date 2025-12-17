@@ -10,6 +10,7 @@ export interface UserProfile {
   assignedClubId: string | null;
   followingClubs: string[];
   onboardingCompleted: boolean;
+  publicKey?: string | null; // RSA public key for E2E encryption
   postsCount?: number; // Computed from posts relationship
   followersCount?: number; // Computed from user_follows relationship
   followingCount?: number; // Computed from user_follows relationship
@@ -112,6 +113,7 @@ export const mapToUserProfile = (data: any, uid: string): UserProfile => ({
   assignedClubId: data.assignedClubId || null,
   followingClubs: data.followingClubs || [],
   onboardingCompleted: data.onboardingCompleted || false,
+  publicKey: data.publicKey || null,
   postsCount: data.postsCount,
   followersCount: data.followersCount,
   followingCount: data.followingCount,

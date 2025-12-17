@@ -59,6 +59,7 @@ authRouter.post('/auth/google', async (request: IRequest, env: Env) => {
     assignedClubId: user.assigned_club_id,
     followingClubs: followingClubs,
     onboardingCompleted: user.onboarding_completed === 1,
+    publicKey: user.public_key,
     ...counts
   };
 
