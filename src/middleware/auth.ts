@@ -1,6 +1,6 @@
 import { IRequest } from 'itty-router';
 import { json } from '../utils/http';
-import { verifyFirebaseToken } from '../auth';
+import { verifyFirebaseToken, extractGoogleUserId } from '../auth';
 import { Env } from '../index';
 
 // Middleware to authenticate requests with Firebase token
@@ -9,7 +9,14 @@ export const withAuth = async (request: IRequest, env: Env) => {
   if (!user) {
     return json(401, { status: 401, error: 'Unauthorized' });
   }
-  request.user = user;
+
+  // Extract the Google user ID and add it to the user object
+  const googleId = extractGoogleUserId(user);
+  request.user = {
+    ...user,
+    sub: googleId, // Override sub with the actual Google ID
+    googleId: googleId // Also add as explicit field
+  };
 };
 
 // Admin authentication middleware - uses hardcoded API key

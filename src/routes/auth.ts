@@ -1,7 +1,7 @@
 import { Router, IRequest } from 'itty-router';
 import { json } from '../utils/http';
 import { Env } from '../index';
-import { verifyFirebaseToken } from '../auth';
+import { verifyFirebaseToken, extractGoogleUserId } from '../auth';
 import { getUserCounts } from '../helpers';
 import { mapToUserProfile } from '../models';
 import { verifyAdminPassword } from '../middleware/auth';
@@ -21,7 +21,9 @@ authRouter.post('/auth/google', async (request: IRequest, env: Env) => {
     return json(401, { status: 401, error: 'Invalid token' });
   }
 
-  const uid = payload.sub;
+  // Extract the actual Google user ID (works for both Firebase and Google OAuth tokens)
+  const uid = extractGoogleUserId(payload);
+
   const email = (payload.email as string) || '';
   const name = (payload.name as string) || email;
   const picture = (payload.picture as string) || '';
@@ -33,9 +35,9 @@ authRouter.post('/auth/google', async (request: IRequest, env: Env) => {
     // Create new user
     const now = new Date().toISOString();
     await env.DB.prepare(`
-      INSERT INTO users (uid, email, display_name, photo_url, onboarding_completed, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(uid, email, name, picture, false, now, now).run();
+      INSERT INTO users(uid, email, display_name, photo_url, onboarding_completed, created_at, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?)
+  `).bind(uid, email, name, picture, false, now, now).run();
 
     user = await env.DB.prepare('SELECT * FROM users WHERE uid = ?').bind(uid).first();
   }

@@ -16,6 +16,25 @@ const GOOGLE_CLIENT_IDS = [
   '124058547668-op2vcm8185rc9s30d5sdjn2b00r1hp9p.apps.googleusercontent.com', // Desktop client
 ];
 
+/**
+ * Extract the actual Google user ID from a token payload
+ * For Firebase tokens, extracts from firebase.identities.google.com
+ * For Google OAuth tokens, uses sub directly
+ */
+export function extractGoogleUserId(payload: any): string {
+  // Check if this is a Firebase token with Google sign-in
+  if (payload.firebase && typeof payload.firebase === 'object') {
+    const firebase = payload.firebase as any;
+    if (firebase.identities && firebase.identities['google.com'] && Array.isArray(firebase.identities['google.com'])) {
+      // Use the Google user ID from identities
+      return firebase.identities['google.com'][0] as string;
+    }
+  }
+
+  // For direct Google OAuth tokens or fallback, use sub
+  return payload.sub as string;
+}
+
 export async function verifyFirebaseToken(request: Request, env: Env) {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
