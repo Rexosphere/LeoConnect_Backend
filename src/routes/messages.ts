@@ -94,7 +94,7 @@ messagesRouter.get('/conversations', withAuth, async (request: IRequest, env: En
     // We'll fetch one by one or all users (if small). Let's fetch one by one for now.
 
     const conversations = await Promise.all(conversationUserIds.map(async (uid) => {
-      const userDoc = await env.DB.prepare('SELECT display_name, photo_url FROM users WHERE uid = ?').bind(uid).first();
+      const userDoc = await env.DB.prepare('SELECT display_name, photo_url, public_key FROM users WHERE uid = ?').bind(uid).first();
       const conv = conversationsMap.get(uid);
 
       // Count unread messages from this user
@@ -104,6 +104,7 @@ messagesRouter.get('/conversations', withAuth, async (request: IRequest, env: En
         userId: uid,
         displayName: userDoc ? userDoc.display_name : 'Unknown User',
         photoUrl: userDoc ? userDoc.photo_url : null,
+        publicKey: userDoc ? userDoc.public_key : null,
         lastMessage: conv.lastMessage,
         lastMessageAt: conv.lastMessageAt,
         unreadCount: unread ? unread.count : 0
